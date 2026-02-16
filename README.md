@@ -1,87 +1,197 @@
 # Anything2Workspace
 
-Knowledge management and modelling pipeline that converts various media formats into a comprehensive workspace for coding agents.
+**Turn any document, URL, or repo into a structured workspace that coding agents can immediately build from.**
 
-## Pipeline
+Anything2Workspace is a 4-module pipeline that ingests raw media (PDFs, slides, spreadsheets, YouTube videos, GitHub repos, websites), extracts structured knowledge, and assembles a self-contained workspace complete with a product spec — ready for an AI coding agent to pick up and start building.
 
 ```
-Input Files/URLs → [Module 1] Anything2Markdown → [Module 2] Markdown2Chunks → [Module 3] Chunks2SKUs → [Module 4] SKUs2Workspace → workspace/
+ ┌──────────┐    ┌───────────────┐    ┌──────────────┐    ┌────────────┐    ┌──────────────┐
+ │  Input    │───>│  Module 1     │───>│  Module 2    │───>│  Module 3  │───>│  Module 4    │
+ │  Files &  │    │  Anything2    │    │  Markdown2   │    │  Chunks2   │    │  SKUs2       │
+ │  URLs     │    │  Markdown     │    │  Chunks      │    │  SKUs      │    │  Workspace   │
+ └──────────┘    └───────────────┘    └──────────────┘    └────────────┘    └──────────────┘
+  PDF, PPTX,       Unified              Token-sized         Factual,          workspace/
+  XLSX, YouTube,   Markdown/JSON         chunks              Relational,       ├── spec.md
+  GitHub repos,                          (100K tokens)       Procedural,       ├── mapping.md
+  Websites                                                   Meta SKUs         └── skus/
 ```
 
-| Module | CLI | Purpose |
-|--------|-----|---------|
-| 1. Anything2Markdown | `anything2md` | Parse files & URLs into Markdown/JSON |
-| 2. Markdown2Chunks | `md2chunks` | Split long markdown into LLM-sized chunks |
-| 3. Chunks2SKUs | `chunks2skus` | Extract knowledge into Standard Knowledge Units |
-| 4. SKUs2Workspace | `skus2workspace` | Assemble workspace with spec.md chatbot |
+## Why?
 
-## Installation
+You have a 2000-page regulation PDF. Or a GitHub repo with 500 files. Or a collection of slides, spreadsheets, and YouTube tutorials. You want an AI agent to build something from this knowledge.
+
+**The problem**: Dumping raw files into an LLM context doesn't work — they're too large, unstructured, and full of noise.
+
+**Anything2Workspace** solves this by:
+1. **Parsing** everything into clean Markdown
+2. **Chunking** oversized documents into LLM-friendly pieces
+3. **Extracting** structured knowledge units (facts, skills, relationships, creative insights)
+4. **Assembling** a workspace with navigable knowledge + a product spec
+
+The output `workspace/` folder is designed so a coding agent can read `spec.md` and start building, with `mapping.md` as a router to find relevant knowledge.
+
+## Quick Start
+
+### Local Installation
 
 ```bash
-# Create virtual environment
+git clone https://github.com/kitchen-engineer42/Anything2Workspace.git
+cd Anything2Workspace
+
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+source .venv/bin/activate
 
-# Install package
 pip install -e .
+npm install -g repomix    # for GitHub repo parsing
 
-# Install Repomix (for GitHub repo parsing)
-npm install -g repomix
+cp .env.example .env      # add your API keys
+```
+
+### Docker
+
+```bash
+docker compose build
+docker compose run anything2workspace bash
+```
+
+### Run the Pipeline
+
+```bash
+# Place files in input/ or add URLs to input/urls.txt
+
+anything2md run              # Step 1: Parse to Markdown
+md2chunks run                # Step 2: Chunk into pieces
+chunks2skus run              # Step 3: Extract knowledge
+skus2workspace run           # Step 4: Assemble workspace (includes interactive chatbot)
+```
+
+Or skip the chatbot for fully automated runs:
+
+```bash
+skus2workspace run --skip-chatbot
+```
+
+## Modules
+
+### Module 1: Anything2Markdown
+
+Converts diverse file types and URLs into Markdown or JSON.
+
+| Input | Parser |
+|-------|--------|
+| PDF | MarkItDown (normal) / MinerU API (scanned/large) |
+| PPTX, DOCX, media | MarkItDown |
+| XLSX, CSV | TabularParser (JSON output) |
+| YouTube URL | YouTubeParser (transcript extraction) |
+| GitHub repo | RepomixParser (full repo → single Markdown) |
+| Other URLs | FireCrawlParser (web crawling) |
+
+```bash
+anything2md run                               # Process all inputs
+anything2md parse-file ./input/document.pdf   # Single file
+anything2md parse-url "https://example.com"   # Single URL
+```
+
+### Module 2: Markdown2Chunks
+
+Splits long Markdown into token-limited chunks (default 100K tokens) using two strategies:
+
+- **Header Chunker** — Hierarchical split by Markdown headers (H1 > H2 > H3)
+- **LLM Chunker** — Fallback for unstructured text, uses LLM to find semantic cut points
+
+```bash
+md2chunks run                     # Process all Markdown from Module 1
+md2chunks chunk-file <file>       # Chunk single file
+md2chunks estimate-tokens <file>  # Show token count
+```
+
+### Module 3: Chunks2SKUs
+
+Extracts 4 types of Standard Knowledge Units (SKUs) from chunks:
+
+| Type | Description | Output |
+|------|-------------|--------|
+| **Factual** | Facts, definitions, data points | `sku_NNN/content.md` |
+| **Relational** | Category hierarchies, glossary terms | `label_tree.json` + `glossary.json` |
+| **Procedural** | Workflows, step-by-step skills | `SKILL.md` (Claude Code format) |
+| **Meta** | Knowledge map + creative insights | `mapping.md` + `eureka.md` |
+
+Includes postprocessing: similarity-based bucketing, two-tier deduplication, and web-grounded confidence scoring.
+
+```bash
+chunks2skus run                    # Extract from all chunks
+chunks2skus show-index             # Display SKU summary
+chunks2skus postprocess all        # Run bucketing + dedup + proofreading
+```
+
+### Module 4: SKUs2Workspace
+
+Assembles SKUs into a self-contained workspace:
+
+1. **Assemble** — Copies SKUs, rewrites internal paths, promotes key files to root
+2. **Chatbot** — Interactive LLM conversation to generate `spec.md` from the knowledge base
+3. **README** — Auto-generated entry point for agents
+
+```bash
+skus2workspace run                   # Full pipeline
+skus2workspace run --skip-chatbot    # Automated (no interactive chatbot)
+skus2workspace assemble              # Copy/organize only
+skus2workspace chatbot -w workspace/ # Chatbot only
+```
+
+**Output workspace:**
+```
+workspace/
+├── spec.md              # Product specification (from chatbot)
+├── mapping.md           # SKU router — find knowledge by topic
+├── eureka.md            # Creative insights and feature ideas
+├── README.md            # Entry point for coding agents
+└── skus/
+    ├── factual/         # Fact-based knowledge units
+    ├── procedural/      # Step-by-step skills
+    ├── relational/      # Taxonomies and glossaries
+    └── skus_index.json  # Master index
 ```
 
 ## Configuration
 
-Copy `.env.example` to `.env` and add your API keys:
+Copy `.env.example` to `.env` and set your API keys:
 
 ```bash
-cp .env.example .env
+# Required
+SILICONFLOW_API_KEY=       # LLM features (Modules 2-4)
+
+# Optional (enable specific parsers)
+MINERU_API_KEY=            # Scanned/large PDF parsing
+FIRECRAWL_API_KEY=         # Website crawling
+JINA_API_KEY=              # Web-grounded confidence scoring
 ```
 
-## Usage
-
-### Module 1: Parse files and URLs
-
-```bash
-anything2md init                              # Create directories
-anything2md run                               # Run full pipeline
-anything2md parse-file ./input/document.pdf   # Parse single file
-anything2md parse-url "https://example.com"   # Parse single URL
-```
-
-### Module 2: Chunk markdown
-
-```bash
-md2chunks run                    # Process all markdown from module 1
-md2chunks chunk-file <file>      # Chunk single file
-md2chunks estimate-tokens <file> # Show token count
-```
-
-### Module 3: Extract knowledge
-
-```bash
-chunks2skus run                      # Process all chunks
-chunks2skus extract-chunk <file>     # Extract from single chunk
-chunks2skus show-index               # Display SKUs summary
-chunks2skus postprocess all          # Run bucketing, dedup, proofreading
-```
-
-### Module 4: Assemble workspace
-
-```bash
-skus2workspace run                        # Full pipeline (assemble + chatbot + README)
-skus2workspace run --skip-chatbot         # Skip interactive chatbot
-skus2workspace run -s <skus_dir> -w <dir> # Custom paths
-skus2workspace assemble -s <skus_dir>     # Copy/organize SKUs only
-skus2workspace chatbot -w <workspace_dir> # Run chatbot on existing workspace
-```
+See `.env.example` for the full list of configurable options (models, token limits, temperatures, etc.).
 
 ## Project Structure
 
 ```
-input/          # Place files and urls.txt here
-output/         # Module 1-3 outputs (markdown, chunks, SKUs)
-workspace/      # Module 4 output (self-contained workspace for coding agents)
-logs/           # JSON and text logs
+src/
+├── anything2markdown/     # Module 1: Universal parser
+├── markdown2chunks/       # Module 2: Smart chunking
+├── chunks2skus/           # Module 3: Knowledge extraction + postprocessing
+└── skus2workspace/        # Module 4: Workspace assembly + chatbot
 ```
 
-See `CLAUDE.md` for detailed project context.
+```
+input/          # Place files and urls.txt here
+output/         # Intermediate outputs (Markdown, chunks, SKUs)
+workspace/      # Final output — hand this to your coding agent
+logs/           # Dual-format logs (JSON + plain text)
+```
+
+## Requirements
+
+- Python 3.10+
+- Node.js 20+ (for `repomix`)
+- SiliconFlow API key (for LLM features)
+
+## License
+
+MIT
