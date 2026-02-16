@@ -37,7 +37,10 @@
       "Bash(gh auth status:*)",
       "Bash(git init:*)",
       "Bash(git remote add:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git -C /Users/mac/Desktop/Anything2Workspace remote -v)"
     ]
   }
 }
