@@ -1,0 +1,49 @@
+# Git
+.git/
+.gitignore
+
+# Environment
+.env
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime data (mounted as volumes)
+input/
+output/
+workspace/
+logs/
+test_data/
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+output_mineru_test/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Docs (not needed in image)
+module_design/
+pipeline_spec.md
+CLAUDE.md

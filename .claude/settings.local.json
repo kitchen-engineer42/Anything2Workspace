@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.firecrawl.dev)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:mineru.net)",
+      "WebFetch(domain:opendatalab.github.io)",
+      "Bash(python3 -m venv:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(anything2md init:*)",
+      "Bash(anything2md --help:*)",
+      "Bash(anything2md run:*)",
+      "Bash(anything2md parse-file:*)",
+      "Bash(anything2md parse-url:*)",
+      "Bash(python3:*)",
+      "Bash(npm install:*)",
+      "Bash(python mineru_client.py:*)",
+      "Bash(python pdf_splitter.py:*)",
+      "Bash(md2chunks --help:*)",
+      "Bash(md2chunks:*)",
+      "Bash(MAX_TOKEN_LENGTH=30000 md2chunks:*)",
+      "Bash(PYTHONPATH=src python:*)",
+      "Bash(chunks2skus --help:*)",
+      "Bash(ls:*)",
+      "Bash(chunks2skus run:*)",
+      "Bash(chunks2skus -v run:*)",
+      "Bash(python:*)",
+      "WebFetch(domain:docs.jina.ai)",
+      "WebFetch(domain:jina.ai)",
+      "Bash(wc:*)",
+      "Bash(skus2workspace --help:*)",
+      "Bash(docker:*)",
+      "Bash(docker info:*)",
+      "Bash(gh auth status:*)",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
