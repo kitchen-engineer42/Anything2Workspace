@@ -32,7 +32,7 @@ All operations generate both:
 Anything2Workspace/
 ├── src/
 │   ├── anything2markdown/     # Module 1: Universal parser
-│   │   ├── parsers/           # File parsers (MarkItDown, MinerU, Tabular)
+│   │   ├── parsers/           # File parsers (MarkItDown, MinerU, PaddleOCR-VL, Tabular)
 │   │   ├── url_parsers/       # URL parsers (YouTube, FireCrawl, Repomix)
 │   │   ├── utils/             # Logging, file utils, retry logic
 │   │   ├── schemas/           # ParseResult schema
@@ -80,7 +80,7 @@ Convert various file types and URLs into Markdown or JSON for downstream process
 | Input | Parser |
 |-------|--------|
 | PDF (normal) | MarkItDown |
-| PDF (>10MB or low quality) | MinerU API |
+| PDF (scanned/low quality) | PaddleOCR-VL (fallback) |
 | PPT, DOC, media | MarkItDown |
 | xlsx, csv | TabularParser (→ JSON) |
 | YouTube URL | YouTubeParser |
@@ -101,8 +101,12 @@ anything2md parse-url X   # Parse single URL
 All settings in `.env`:
 - `INPUT_DIR`, `OUTPUT_DIR`, `LOG_DIR` - Paths
 - `MINERU_API_KEY`, `FIRECRAWL_API_KEY` - API keys
-- `MAX_PDF_SIZE_MB=10` - MinerU threshold
-- `MIN_VALID_CHARS=500` - Quality threshold for fallback
+- `MAX_PDF_SIZE_MB=10` - Size threshold (MinerU disabled)
+- `MIN_VALID_CHARS=500` - Quality threshold for OCR fallback
+- `PADDLEOCR_MODEL=PaddlePaddle/PaddleOCR-VL-1.5` - OCR model (or `mlx-community/PaddleOCR-VL-1.5-8bit` for local)
+- `OCR_DPI=150` - Page render resolution
+- `OCR_PAGE_TIMEOUT=60` - Per-page API timeout
+- `OCR_BASE_URL=` - Empty = SiliconFlow API; `http://localhost:8080` = local mlx-vlm
 - `LOG_FORMAT=both` - Logging format
 
 ## Module 2: Markdown2Chunks

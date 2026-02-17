@@ -10,10 +10,13 @@ from chunks2skus.schemas.sku import (
     Glossary,
     GlossaryEntry,
     LabelTree,
+    Relationship,
+    RelationType,
+    Relationships,
     SKUHeader,
     SKUType,
 )
-from chunks2skus.utils.llm_client import call_llm, parse_json_response
+from chunks2skus.utils.llm_client import call_llm_json
 
 from .base import BaseExtractor
 
@@ -27,11 +30,12 @@ Relational knowledge includes:
 - Hierarchical categorizations (topics, subtopics)
 - Causal and contextual knowledge (why, because, but, if-then)
 - Domain terminology and definitions
+- Aliases and alternative names for the same concept
 
 EXISTING LABEL TREE:
 {label_tree}
 
-EXISTING GLOSSARY:
+EXISTING GLOSSARY (excerpt, {glossary_count} total entries):
 {glossary}
 
 NEW CHUNK CONTENT:
@@ -43,6 +47,8 @@ Update the knowledge base with new relational knowledge from this chunk.
 1. ADD new labels to the tree hierarchy (preserve all existing labels)
 2. ADD new glossary entries or UPDATE existing ones with richer definitions
 3. Link glossary terms to relevant labels
+4. Extract TYPED RELATIONSHIPS between concepts
+5. Extract ALIASES (abbreviations, acronyms, alternative names)
 
 Output ONLY valid JSON:
 {{
@@ -62,18 +68,31 @@ Output ONLY valid JSON:
         "term": "Term Name",
         "definition": "Clear definition of the term",
         "labels": ["Category", "Subcategory"],
-        "source_chunk": "{chunk_id}",
+        "source_chunks": ["{chunk_id}"],
+        "aliases": ["Abbreviation", "Alternative Name"],
         "related_terms": ["OtherTerm1", "OtherTerm2"]
       }}
     ]
-  }}
+  }},
+  "relationships": [
+    {{
+      "subject": "Concept A",
+      "predicate": "causes",
+      "object": "Concept B",
+      "source_chunks": ["{chunk_id}"]
+    }}
+  ]
 }}
+
+Valid predicates: "is-a", "has-a", "part-of", "causes", "caused-by", "requires", "enables", "contradicts", "related-to", "depends-on", "regulates", "implements", "example-of"
 
 Guidelines:
 - Preserve ALL existing labels and glossary entries
 - Add new entries, don't delete existing ones
 - Keep definitions concise but complete
 - Use consistent naming for labels (Title Case)
+- For aliases: include abbreviations (e.g., "G-SIB" for "Global Systemically Important Banks")
+- For relationships: only extract clearly stated relationships, not speculative ones
 '''
 
 
@@ -94,11 +113,13 @@ class RelationalExtractor(BaseExtractor):
         super().__init__(output_dir)
         self.label_tree_path = self.type_dir / "label_tree.json"
         self.glossary_path = self.type_dir / "glossary.json"
+        self.relationships_path = self.type_dir / "relationships.json"
         self.header_path = self.type_dir / "header.md"
 
         # Load or initialize data structures
         self.label_tree = self._load_label_tree()
         self.glossary = self._load_glossary()
+        self.relationships = self._load_relationships()
 
         # Create header.md on first run
         if not self.header_path.exists():
@@ -124,6 +145,16 @@ class RelationalExtractor(BaseExtractor):
                 logger.warning("Failed to load glossary", error=str(e))
         return Glossary()
 
+    def _load_relationships(self) -> Relationships:
+        """Load existing relationships or create empty collection."""
+        if self.relationships_path.exists():
+            try:
+                data = json.loads(self.relationships_path.read_text(encoding="utf-8"))
+                return Relationships.model_validate(data)
+            except Exception as e:
+                logger.warning("Failed to load relationships", error=str(e))
+        return Relationships()
+
     def _create_header(self) -> None:
         """Create header.md for relational knowledge."""
         header = SKUHeader(
@@ -136,7 +167,7 @@ class RelationalExtractor(BaseExtractor):
         self.header_path.write_text(header.to_markdown(), encoding="utf-8")
 
     def _save_data(self) -> None:
-        """Save label tree and glossary to disk."""
+        """Save label tree, glossary, and relationships to disk."""
         # Save label tree
         self.label_tree_path.write_text(
             self.label_tree.model_dump_json(indent=2),
@@ -149,17 +180,20 @@ class RelationalExtractor(BaseExtractor):
             encoding="utf-8",
         )
 
-        # Update header with character count
-        total_chars = (
-            len(self.label_tree_path.read_text(encoding="utf-8"))
-            + len(self.glossary_path.read_text(encoding="utf-8"))
+        # Save relationships
+        self.relationships_path.write_text(
+            self.relationships.model_dump_json(indent=2),
+            encoding="utf-8",
         )
+
+        # Update header with character count
+        total_chars = self._get_total_chars()
         header = SKUHeader(
             name="relational-knowledge-base",
             classification=SKUType.RELATIONAL,
             character_count=total_chars,
             source_chunk="aggregated",
-            description="Domain label hierarchy and terminology glossary",
+            description="Domain label hierarchy, terminology glossary, and typed relationships",
         )
         self.header_path.write_text(header.to_markdown(), encoding="utf-8")
 
@@ -184,25 +218,26 @@ class RelationalExtractor(BaseExtractor):
 
         # Prepare current state as context for LLM
         current_tree = self.label_tree.model_dump_json(indent=2)
-        current_glossary = self.glossary.model_dump_json(indent=2)
+        # Truncate glossary for large corpora to avoid token overflow
+        glossary_count = len(self.glossary.entries)
+        glossary_json = self.glossary.model_dump_json(indent=2)
+        if len(glossary_json) > 6000:
+            # Show only first 20 entries + note that there are more
+            truncated = Glossary(entries=self.glossary.entries[:20])
+            glossary_json = truncated.model_dump_json(indent=2)
 
-        # Call LLM for extraction
+        # Call LLM for extraction with structured output + retry
         prompt = RELATIONAL_PROMPT.format(
             label_tree=current_tree,
-            glossary=current_glossary,
+            glossary=glossary_json,
+            glossary_count=glossary_count,
             content=content,
             chunk_id=chunk_id,
         )
-        response = call_llm(prompt, max_tokens=8000)
+        parsed = call_llm_json(prompt, max_tokens=8000)
 
-        if not response:
-            logger.warning("LLM returned no response for relational extraction")
-            return []
-
-        # Parse response
-        parsed = parse_json_response(response)
         if not parsed:
-            logger.warning("Failed to parse relational extraction response")
+            logger.warning("Failed to get relational extraction response", chunk_id=chunk_id)
             return []
 
         # Update label tree
@@ -221,6 +256,25 @@ class RelationalExtractor(BaseExtractor):
             except Exception as e:
                 logger.warning("Failed to parse new glossary", error=str(e))
 
+        # Update relationships
+        if "relationships" in parsed:
+            try:
+                for rel_data in parsed["relationships"]:
+                    predicate_str = rel_data.get("predicate", "related-to")
+                    try:
+                        predicate = RelationType(predicate_str)
+                    except ValueError:
+                        predicate = RelationType.RELATED_TO
+                    rel = Relationship(
+                        subject=rel_data["subject"],
+                        predicate=predicate,
+                        object=rel_data["object"],
+                        source_chunks=rel_data.get("source_chunks", [chunk_id]),
+                    )
+                    self.relationships.add(rel)
+            except Exception as e:
+                logger.warning("Failed to parse relationships", error=str(e))
+
         # Save updated data
         self._save_data()
 
@@ -229,6 +283,7 @@ class RelationalExtractor(BaseExtractor):
             chunk_id=chunk_id,
             labels=len(self.label_tree.roots),
             terms=len(self.glossary.entries),
+            relationships=len(self.relationships.entries),
         )
 
         return [
@@ -273,15 +328,15 @@ class RelationalExtractor(BaseExtractor):
     def _get_total_chars(self) -> int:
         """Get total character count of relational knowledge."""
         total = 0
-        if self.label_tree_path.exists():
-            total += len(self.label_tree_path.read_text(encoding="utf-8"))
-        if self.glossary_path.exists():
-            total += len(self.glossary_path.read_text(encoding="utf-8"))
+        for path in [self.label_tree_path, self.glossary_path, self.relationships_path]:
+            if path.exists():
+                total += len(path.read_text(encoding="utf-8"))
         return total
 
     def get_context_for_next(self) -> dict[str, Any]:
-        """Provide label tree and glossary to next extractors."""
+        """Provide label tree, glossary, and relationships to next extractors."""
         return {
             "label_tree": self.label_tree,
             "glossary": self.glossary,
+            "relationships": self.relationships,
         }

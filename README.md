@@ -79,7 +79,7 @@ Converts diverse file types and URLs into Markdown or JSON.
 
 | Input | Parser |
 |-------|--------|
-| PDF | MarkItDown (normal) / MinerU API (scanned/large) |
+| PDF | MarkItDown (normal) / PaddleOCR-VL (scanned/low-quality fallback) |
 | PPTX, DOCX, media | MarkItDown |
 | XLSX, CSV | TabularParser (JSON output) |
 | YouTube URL | YouTubeParser (transcript extraction) |
@@ -159,12 +159,26 @@ Copy `.env.example` to `.env` and set your API keys:
 
 ```bash
 # Required
-SILICONFLOW_API_KEY=       # LLM features (Modules 2-4)
+SILICONFLOW_API_KEY=       # LLM features (Modules 2-4) + PaddleOCR-VL via API
 
 # Optional (enable specific parsers)
-MINERU_API_KEY=            # Scanned/large PDF parsing
 FIRECRAWL_API_KEY=         # Website crawling
 JINA_API_KEY=              # Web-grounded confidence scoring
+```
+
+### Local OCR Deployment (Optional)
+
+For scanned PDFs, PaddleOCR-VL can run locally on Apple Silicon via mlx-vlm instead of using the SiliconFlow API:
+
+```bash
+pip install mlx-vlm
+cd /tmp && python -m mlx_vlm.server --port 8080 --trust-remote-code
+```
+
+Then in `.env`:
+```bash
+OCR_BASE_URL=http://localhost:8080
+PADDLEOCR_MODEL=mlx-community/PaddleOCR-VL-1.5-8bit
 ```
 
 See `.env.example` for the full list of configurable options (models, token limits, temperatures, etc.).
@@ -194,4 +208,4 @@ logs/           # Dual-format logs (JSON + plain text)
 
 ## License
 
-MIT
+Apache License 2.0 — see [LICENSE](LICENSE) for details.

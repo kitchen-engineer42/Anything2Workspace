@@ -15,7 +15,7 @@ from chunks2skus.schemas.postprocessing import (
     DedupReport,
     FlaggedPair,
 )
-from chunks2skus.utils.llm_client import call_llm, parse_json_response
+from chunks2skus.utils.llm_client import call_llm_json
 
 logger = structlog.get_logger(__name__)
 
@@ -65,10 +65,11 @@ Actions:
 - "delete": One is a clear duplicate (specify which to delete in "delete_sku")
 - "rewrite": One needs revision to remove overlap (specify which in "rewrite_sku", provide "new_content")
 - "merge": Combine into one (provide "merged_content", specify "delete_sku" for the one to remove)
+- "contradiction": Both should be kept but they state contradictory things about the same topic
 
 Return JSON:
 {{
-    "action": "keep" | "delete" | "rewrite" | "merge",
+    "action": "keep" | "delete" | "rewrite" | "merge" | "contradiction",
     "reasoning": "brief explanation",
     "delete_sku": "sku_id or null",
     "rewrite_sku": "sku_id or null",
@@ -151,6 +152,9 @@ class DedupPostprocessor(BasePostprocessor):
                 elif action.action == "merge":
                     report.total_merged += 1
                     report.total_deleted += len(action.deleted_skus)
+                elif action.action == "contradiction":
+                    report.total_contradictions += 1
+                    report.contradictions.append(action)
 
         # Save updated index
         self.save_index(index)
@@ -171,6 +175,7 @@ class DedupPostprocessor(BasePostprocessor):
             rewritten=report.total_rewritten,
             merged=report.total_merged,
             kept=report.total_kept,
+            contradictions=report.total_contradictions,
         )
 
         return report
@@ -208,7 +213,7 @@ class DedupPostprocessor(BasePostprocessor):
         )
 
         prompt = TIER1_SCAN_PROMPT.format(headers=headers_text)
-        response = call_llm(
+        parsed = call_llm_json(
             prompt=prompt,
             system_prompt=TIER1_SYSTEM_PROMPT,
             model=settings.dedup_scan_model,
@@ -216,11 +221,6 @@ class DedupPostprocessor(BasePostprocessor):
             max_tokens=4000,
         )
 
-        if not response:
-            logger.warning("Tier 1 scan returned no response", bucket_id=bucket_id)
-            return []
-
-        parsed = parse_json_response(response)
         if not parsed or "flagged_pairs" not in parsed:
             return []
 
@@ -260,7 +260,7 @@ class DedupPostprocessor(BasePostprocessor):
             sku_b_content=content_b[:8000],
         )
 
-        response = call_llm(
+        parsed = call_llm_json(
             prompt=prompt,
             system_prompt=TIER2_SYSTEM_PROMPT,
             model=settings.extraction_model,
@@ -268,15 +268,11 @@ class DedupPostprocessor(BasePostprocessor):
             max_tokens=4000,
         )
 
-        if not response:
-            return None
-
-        parsed = parse_json_response(response)
         if not parsed:
             return None
 
         action_str = parsed.get("action", "keep")
-        if action_str not in ("keep", "delete", "rewrite", "merge"):
+        if action_str not in ("keep", "delete", "rewrite", "merge", "contradiction"):
             action_str = "keep"
 
         return DedupAction(
@@ -286,12 +282,23 @@ class DedupPostprocessor(BasePostprocessor):
             detail=parsed.get("reasoning", ""),
             deleted_skus=[parsed["delete_sku"]] if parsed.get("delete_sku") else [],
             rewritten_skus=[parsed["rewrite_sku"]] if parsed.get("rewrite_sku") else [],
+            new_content=parsed.get("new_content"),
+            merged_content=parsed.get("merged_content"),
         )
 
     def _apply_action(self, action: DedupAction, index) -> None:
-        """Apply a dedup action: delete, rewrite, merge, or keep."""
+        """Apply a dedup action: delete, rewrite, merge, contradiction, or keep."""
         if action.action == "keep":
             logger.debug("Keeping both", a=action.sku_a, b=action.sku_b)
+            return
+
+        if action.action == "contradiction":
+            logger.info(
+                "Contradiction detected",
+                a=action.sku_a,
+                b=action.sku_b,
+                detail=action.detail,
+            )
             return
 
         if action.action == "delete":
@@ -300,11 +307,34 @@ class DedupPostprocessor(BasePostprocessor):
                     self._delete_sku(sku_id, index)
 
         elif action.action == "rewrite":
-            # Rewrite is a future enhancement — for now just log
             for sku_id in action.rewritten_skus:
-                logger.info("Rewrite flagged (manual review)", sku_id=sku_id, detail=action.detail)
+                if not self._validate_sku_id(sku_id, action):
+                    continue
+                if action.new_content:
+                    self._write_sku_content(sku_id, action.new_content)
+                    logger.info("Rewrote SKU content", sku_id=sku_id)
+                else:
+                    logger.warning(
+                        "Rewrite action missing new_content",
+                        sku_id=sku_id,
+                        detail=action.detail,
+                    )
 
         elif action.action == "merge":
+            # Determine the surviving SKU (the one NOT deleted)
+            surviving_sku = (
+                action.sku_b if action.sku_a in action.deleted_skus else action.sku_a
+            )
+            # Write merged content to the surviving SKU
+            if action.merged_content:
+                self._write_sku_content(surviving_sku, action.merged_content)
+                logger.info("Wrote merged content to surviving SKU", sku_id=surviving_sku)
+            else:
+                logger.warning(
+                    "Merge action missing merged_content",
+                    surviving=surviving_sku,
+                    detail=action.detail,
+                )
             # Delete the secondary SKU
             for sku_id in action.deleted_skus:
                 if self._validate_sku_id(sku_id, action):
@@ -345,6 +375,26 @@ class DedupPostprocessor(BasePostprocessor):
 
         # Remove from index
         index.remove_sku(sku_id)
+
+    def _write_sku_content(self, sku_id: str, content: str) -> None:
+        """Write new content to an SKU's content file."""
+        index = self.load_index()
+        for entry in index.skus:
+            if entry.sku_id == sku_id:
+                sku_path = Path(entry.path)
+                if sku_path.is_dir():
+                    # Find existing content file to overwrite
+                    for candidate in ["content.md", "content.json", "SKILL.md"]:
+                        p = sku_path / candidate
+                        if p.exists():
+                            p.write_text(content, encoding="utf-8")
+                            logger.debug("Updated SKU content", sku_id=sku_id, file=candidate)
+                            return
+                    # No existing content file — write as content.md
+                    (sku_path / "content.md").write_text(content, encoding="utf-8")
+                    logger.debug("Created SKU content", sku_id=sku_id, file="content.md")
+                return
+        logger.warning("SKU not found in index for content write", sku_id=sku_id)
 
     def _load_sku_content(self, sku_id: str) -> Optional[str]:
         """Load full content of an SKU."""

@@ -115,6 +115,21 @@ def parse_file(file_path: Path, output_dir: Path | None):
         parser = router.route_file(file_path)
         result = parser.parse(file_path, output)
 
+        # OCR fallback for scanned PDFs with low-quality MarkItDown output
+        if (
+            file_path.suffix.lower() == ".pdf"
+            and result.status == "success"
+            and parser.parser_name == "markitdown"
+            and result.output_path
+            and result.output_path.exists()
+        ):
+            output_content = result.output_path.read_text(encoding="utf-8")
+            if router.should_fallback_to_ocr(output_content):
+                click.echo("MarkItDown extracted too few characters, falling back to PaddleOCR-VL...")
+                result.output_path.unlink(missing_ok=True)
+                ocr_parser = router.get_ocr_fallback_parser()
+                result = ocr_parser.parse(file_path, output)
+
         click.echo(f"Status: {result.status}")
         click.echo(f"Parser: {result.parser_used}")
         if result.status == "success":

@@ -1,5 +1,6 @@
 """Main pipeline orchestration for Anything2Markdown."""
 
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -73,6 +74,9 @@ class Anything2MarkdownPipeline:
         duration = (datetime.now() - start_time).total_seconds()
         self._log_summary(duration)
 
+        # Persist parse results index for downstream provenance
+        self._save_results_index(duration)
+
         return self.results
 
     def _process_file_with_retry(self, file_path: Path) -> ParseResult:
@@ -132,7 +136,7 @@ class Anything2MarkdownPipeline:
             # Parse the file
             result = parser.parse(file_path, settings.output_dir)
 
-            # Check for MinerU fallback (only for PDFs parsed by MarkItDown)
+            # Check for OCR fallback (only for PDFs parsed by MarkItDown)
             if (
                 file_path.suffix.lower() == ".pdf"
                 and result.status == "success"
@@ -141,15 +145,15 @@ class Anything2MarkdownPipeline:
             ):
                 # Read output and check quality
                 output_content = result.output_path.read_text(encoding="utf-8")
-                if self.router.should_fallback_to_mineru(output_content):
-                    logger.info("Falling back to MinerU", file=file_path.name)
+                if self.router.should_fallback_to_ocr(output_content):
+                    logger.info("Falling back to PaddleOCR-VL", file=file_path.name)
 
                     # Remove low-quality output
                     result.output_path.unlink(missing_ok=True)
 
-                    # Re-parse with MinerU
-                    mineru_parser = self.router.get_mineru_parser()
-                    result = mineru_parser.parse(file_path, settings.output_dir)
+                    # Re-parse with PaddleOCR-VL
+                    ocr_parser = self.router.get_ocr_fallback_parser()
+                    result = ocr_parser.parse(file_path, settings.output_dir)
 
             return result
 
@@ -220,6 +224,50 @@ class Anything2MarkdownPipeline:
         except Exception as e:
             logger.error("URL processing failed", url=url, error=str(e))
             raise
+
+    def _save_results_index(self, duration: float) -> None:
+        """
+        Persist all ParseResults to parse_results_index.json.
+
+        Preserves the provenance chain (parser used, timing, JIT metadata)
+        so downstream modules can reference it.
+        """
+        index_path = settings.output_dir / "parse_results_index.json"
+        index_data = {
+            "created_at": datetime.now().isoformat(),
+            "duration_seconds": round(duration, 2),
+            "total": len(self.results),
+            "success": sum(1 for r in self.results if r.status == "success"),
+            "failed": sum(1 for r in self.results if r.status == "failed"),
+            "skipped": sum(1 for r in self.results if r.status == "skipped"),
+            "results": [],
+        }
+        for r in self.results:
+            entry = {
+                "source_path": str(r.source_path),
+                "source_type": r.source_type,
+                "output_path": str(r.output_path),
+                "output_format": r.output_format,
+                "parser_used": r.parser_used,
+                "status": r.status,
+                "started_at": r.started_at.isoformat(),
+                "completed_at": r.completed_at.isoformat(),
+                "duration_seconds": round(r.duration_seconds, 2),
+                "character_count": r.character_count,
+                "error_message": r.error_message,
+                "retry_count": r.retry_count,
+                "metadata": r.metadata,
+            }
+            index_data["results"].append(entry)
+
+        try:
+            index_path.write_text(
+                json.dumps(index_data, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            logger.info("Saved parse results index", path=str(index_path))
+        except Exception as e:
+            logger.error("Failed to save parse results index", error=str(e))
 
     def _log_summary(self, duration: float):
         """

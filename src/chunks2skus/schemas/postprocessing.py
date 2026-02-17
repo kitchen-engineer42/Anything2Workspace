@@ -57,10 +57,16 @@ class DedupAction(BaseModel):
 
     sku_a: str
     sku_b: str
-    action: str  # "delete", "rewrite", "merge", "keep"
+    action: str  # "delete", "rewrite", "merge", "keep", "contradiction"
     detail: str = ""
     deleted_skus: list[str] = Field(default_factory=list)
     rewritten_skus: list[str] = Field(default_factory=list)
+    new_content: Optional[str] = Field(
+        default=None, description="Rewritten content for 'rewrite' action"
+    )
+    merged_content: Optional[str] = Field(
+        default=None, description="Merged content for 'merge' action"
+    )
 
 
 class DedupReport(BaseModel):
@@ -74,7 +80,12 @@ class DedupReport(BaseModel):
     total_rewritten: int = 0
     total_merged: int = 0
     total_kept: int = 0
+    total_contradictions: int = 0
     actions: list[DedupAction] = Field(default_factory=list)
+    contradictions: list[DedupAction] = Field(
+        default_factory=list,
+        description="Pairs flagged as contradictory (kept but flagged for review)",
+    )
 
 
 # --- Proofreading ---

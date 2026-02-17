@@ -40,7 +40,29 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(git -C /Users/mac/Desktop/Anything2Workspace remote -v)"
+      "Bash(git -C /Users/mac/Desktop/Anything2Workspace remote -v)",
+      "Bash(ssh:*)",
+      "Bash(ssh-keyscan:*)",
+      "Bash(~/.ssh/known_hosts)",
+      "Bash(git -C /Users/mac/Desktop/Anything2Workspace remote set-url:*)",
+      "Bash(git -C /Users/mac/Desktop/Anything2Workspace push -u origin main)",
+      "Bash(git -C /Users/mac/Desktop/Anything2Workspace pull origin main --rebase)",
+      "Bash(git -C /Users/mac/Desktop/Anything2Workspace status --short)",
+      "Bash(git stash:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash pop:*)",
+      "WebFetch(domain:www.paddleocr.ai)",
+      "WebFetch(domain:docs.siliconflow.cn)",
+      "Bash(test:*)",
+      "Bash(curl:*)",
+      "WebFetch(domain:ollama.com)",
+      "WebFetch(domain:docs.ollama.com)",
+      "Bash(echo:*)",
+      "Bash(NO_PROXY=localhost,127.0.0.1 python3:*)",
+      "Bash(lsof:*)",
+      "Bash(NO_PROXY=localhost curl:*)",
+      "Bash(NO_PROXY=localhost python -m anything2markdown.cli:*)",
+      "Bash(git rm:*)"
     ]
   }
 }

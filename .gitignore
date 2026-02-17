@@ -43,6 +43,8 @@ output/
 workspace/
 logs/
 *.log
+module_design/
+dev_log/
 
 # Test
 .pytest_cache/

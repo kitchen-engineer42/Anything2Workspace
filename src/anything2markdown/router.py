@@ -6,7 +6,7 @@ from pathlib import Path
 import structlog
 
 from .config import settings
-from .parsers import MarkItDownParser, MinerUParser, TabularParser
+from .parsers import MarkItDownParser, MinerUParser, PaddleOCRVLParser, TabularParser
 from .parsers.base import BaseParser
 from .url_parsers import FireCrawlParser, RepomixParser, YouTubeParser
 from .url_parsers.base import BaseURLParser
@@ -37,6 +37,7 @@ class Router:
         ".png": "markitdown",
         ".html": "markitdown",
         ".htm": "markitdown",
+        ".epub": "markitdown",
         ".md": "markitdown",
         ".txt": "markitdown",
         # Tabular data
@@ -63,6 +64,7 @@ class Router:
         self.parsers: dict[str, BaseParser] = {
             "markitdown": MarkItDownParser(),
             "mineru": MinerUParser(),
+            "paddleocr_vl": PaddleOCRVLParser(),
             "tabular": TabularParser(),
         }
 
@@ -165,9 +167,9 @@ class Router:
             return True
         return False
 
-    def should_fallback_to_mineru(self, text_content: str) -> bool:
+    def should_fallback_to_ocr(self, text_content: str) -> bool:
         """
-        Check if MarkItDown result should fallback to MinerU.
+        Check if MarkItDown result should fallback to OCR.
         Called after MarkItDown parsing to check content quality.
 
         Args:
@@ -181,7 +183,7 @@ class Router:
 
         if valid_chars < settings.min_valid_chars:
             logger.info(
-                "Low valid chars, fallback to MinerU",
+                "Low valid chars, fallback to OCR",
                 valid_chars=valid_chars,
                 threshold=settings.min_valid_chars,
             )
@@ -189,6 +191,6 @@ class Router:
 
         return False
 
-    def get_mineru_parser(self) -> BaseParser:
-        """Get the MinerU parser for fallback scenarios."""
-        return self.parsers["mineru"]
+    def get_ocr_fallback_parser(self) -> BaseParser:
+        """Get the PaddleOCR-VL parser for OCR fallback scenarios."""
+        return self.parsers["paddleocr_vl"]

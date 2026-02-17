@@ -28,6 +28,10 @@ class SKUHeader(BaseModel):
     confidence: Optional[float] = Field(
         default=None, description="Proofreading confidence score (0.0-1.0)"
     )
+    related_skus: list[str] = Field(
+        default_factory=list,
+        description="IDs of related SKUs (cross-links for navigation)",
+    )
 
     def to_markdown(self) -> str:
         """Render header as markdown."""
@@ -40,6 +44,8 @@ class SKUHeader(BaseModel):
         ]
         if self.confidence is not None:
             lines.append(f"- **Confidence**: {self.confidence:.2f}")
+        if self.related_skus:
+            lines.append(f"- **Related SKUs**: {', '.join(self.related_skus)}")
         lines.append("")
         lines.append(self.description)
         lines.append("")
@@ -111,6 +117,72 @@ class LabelTree(BaseModel):
         return paths
 
 
+class RelationType(str, Enum):
+    """Types of relationships between concepts."""
+
+    IS_A = "is-a"
+    HAS_A = "has-a"
+    PART_OF = "part-of"
+    CAUSES = "causes"
+    CAUSED_BY = "caused-by"
+    REQUIRES = "requires"
+    ENABLES = "enables"
+    CONTRADICTS = "contradicts"
+    RELATED_TO = "related-to"
+    DEPENDS_ON = "depends-on"
+    REGULATES = "regulates"
+    IMPLEMENTS = "implements"
+    EXAMPLE_OF = "example-of"
+
+
+class Relationship(BaseModel):
+    """A typed relationship between two concepts."""
+
+    subject: str = Field(..., description="Source concept/entity")
+    predicate: RelationType = Field(..., description="Type of relationship")
+    object: str = Field(..., description="Target concept/entity")
+    source_chunks: list[str] = Field(
+        default_factory=list,
+        description="Chunks where this relationship was found",
+    )
+    confidence: Optional[float] = Field(
+        default=None, description="Extraction confidence (0.0-1.0)"
+    )
+
+
+class Relationships(BaseModel):
+    """Collection of typed relationships extracted from the corpus."""
+
+    entries: list[Relationship] = Field(default_factory=list)
+
+    def add(self, rel: Relationship) -> None:
+        """Add a relationship, deduplicating by (subject, predicate, object)."""
+        for existing in self.entries:
+            if (
+                existing.subject.lower() == rel.subject.lower()
+                and existing.predicate == rel.predicate
+                and existing.object.lower() == rel.object.lower()
+            ):
+                # Merge source chunks
+                for sc in rel.source_chunks:
+                    if sc not in existing.source_chunks:
+                        existing.source_chunks.append(sc)
+                return
+        self.entries.append(rel)
+
+    def get_by_subject(self, subject: str) -> list[Relationship]:
+        """Get all relationships for a given subject."""
+        return [r for r in self.entries if r.subject.lower() == subject.lower()]
+
+    def get_by_object(self, obj: str) -> list[Relationship]:
+        """Get all relationships targeting a given object."""
+        return [r for r in self.entries if r.object.lower() == obj.lower()]
+
+    def get_by_type(self, rel_type: RelationType) -> list[Relationship]:
+        """Get all relationships of a given type."""
+        return [r for r in self.entries if r.predicate == rel_type]
+
+
 class GlossaryEntry(BaseModel):
     """A term definition in the glossary."""
 
@@ -120,7 +192,19 @@ class GlossaryEntry(BaseModel):
         default_factory=list,
         description="Label path(s) this term belongs to, e.g., ['Finance', 'Risk']",
     )
-    source_chunk: str = Field(..., description="Chunk where this term was found")
+    source_chunks: list[str] = Field(
+        default_factory=list,
+        description="All chunks where this term was found or enriched",
+    )
+    # Keep source_chunk as a computed property for backward compatibility
+    source_chunk: str = Field(
+        default="",
+        description="Deprecated: use source_chunks. First chunk where term was found.",
+    )
+    aliases: list[str] = Field(
+        default_factory=list,
+        description="Alternative names for this term (e.g., abbreviations, full forms)",
+    )
     related_terms: list[str] = Field(
         default_factory=list,
         description="Other terms related to this one",
@@ -133,10 +217,12 @@ class Glossary(BaseModel):
     entries: list[GlossaryEntry] = Field(default_factory=list)
 
     def get_entry(self, term: str) -> Optional[GlossaryEntry]:
-        """Find entry by term (case-insensitive)."""
+        """Find entry by term or alias (case-insensitive)."""
         term_lower = term.lower()
         for entry in self.entries:
             if entry.term.lower() == term_lower:
+                return entry
+            if any(a.lower() == term_lower for a in entry.aliases):
                 return entry
         return None
 
@@ -144,8 +230,16 @@ class Glossary(BaseModel):
         """Add new entry or update existing by term."""
         existing = self.get_entry(entry.term)
         if existing:
-            # Update existing entry
-            existing.definition = entry.definition
+            # Merge definition: keep longer one (richer) rather than blindly overwriting
+            if len(entry.definition) > len(existing.definition):
+                existing.definition = entry.definition
+            # Accumulate source chunks
+            for sc in entry.source_chunks:
+                if sc and sc not in existing.source_chunks:
+                    existing.source_chunks.append(sc)
+            # Backward compat: also check the deprecated source_chunk field
+            if entry.source_chunk and entry.source_chunk not in existing.source_chunks:
+                existing.source_chunks.append(entry.source_chunk)
             # Merge labels (deduplicate)
             for label in entry.labels:
                 if label not in existing.labels:
@@ -154,7 +248,15 @@ class Glossary(BaseModel):
             for rt in entry.related_terms:
                 if rt not in existing.related_terms:
                     existing.related_terms.append(rt)
+            # Merge aliases
+            for alias in entry.aliases:
+                if alias and alias.lower() != existing.term.lower():
+                    if not any(a.lower() == alias.lower() for a in existing.aliases):
+                        existing.aliases.append(alias)
         else:
+            # Ensure source_chunks is populated from source_chunk for new entries
+            if entry.source_chunk and entry.source_chunk not in entry.source_chunks:
+                entry.source_chunks.append(entry.source_chunk)
             self.entries.append(entry)
 
     def get_terms_by_label(self, label: str) -> list[GlossaryEntry]:

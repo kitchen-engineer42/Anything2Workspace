@@ -31,6 +31,15 @@ class Settings(BaseSettings):
     max_pdf_size_mb: int = Field(default=10)
     min_valid_chars: int = Field(default=500)
 
+    # SiliconFlow API
+    siliconflow_base_url: str = Field(default="https://api.siliconflow.cn/v1")
+
+    # PaddleOCR-VL Configuration
+    paddleocr_model: str = Field(default="PaddlePaddle/PaddleOCR-VL-1.5")
+    ocr_dpi: int = Field(default=150)
+    ocr_page_timeout: int = Field(default=60)
+    ocr_base_url: str = Field(default="")  # Empty = use siliconflow_base_url; set to e.g. http://localhost:8080/v1 for local
+
     # Processing
     retry_count: int = Field(default=1)
     retry_delay_seconds: int = Field(default=2)

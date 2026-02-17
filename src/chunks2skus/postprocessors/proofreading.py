@@ -12,7 +12,7 @@ from chunks2skus.postprocessors.base import BasePostprocessor
 from chunks2skus.schemas.postprocessing import ConfidenceEntry, ConfidenceReport
 from chunks2skus.schemas.sku import SKUType
 from chunks2skus.utils.jina_client import search_web
-from chunks2skus.utils.llm_client import call_llm, parse_json_response
+from chunks2skus.utils.llm_client import call_llm_json
 
 logger = structlog.get_logger(__name__)
 
@@ -180,17 +180,13 @@ class ProofreadingPostprocessor(BasePostprocessor):
             web_results=web_text[:4000],
         )
 
-        response = call_llm(
+        parsed = call_llm_json(
             prompt=prompt,
             system_prompt=CONFIDENCE_SYSTEM_PROMPT,
             temperature=0.1,
             max_tokens=1000,
         )
 
-        if not response:
-            return None
-
-        parsed = parse_json_response(response)
         if not parsed:
             return None
 

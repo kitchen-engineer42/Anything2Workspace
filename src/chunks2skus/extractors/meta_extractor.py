@@ -6,7 +6,7 @@ from typing import Any
 import structlog
 
 from chunks2skus.schemas.sku import SKUHeader, SKUType
-from chunks2skus.utils.llm_client import call_llm, parse_json_response
+from chunks2skus.utils.llm_client import call_llm_json
 
 from .base import BaseExtractor
 
@@ -214,21 +214,16 @@ class MetaExtractor(BaseExtractor):
             chunk_id=chunk_id,
         )
 
-        # Low temperature for accuracy
-        response = call_llm(
+        # Low temperature for accuracy, with structured output + retry
+        parsed = call_llm_json(
             prompt,
             system_prompt="You are a precise documentation assistant. Be accurate and factual. Never invent or hallucinate information.",
             temperature=0.2,
             max_tokens=8000,
         )
 
-        if not response:
-            logger.warning("LLM returned no response for mapping update")
-            return
-
-        parsed = parse_json_response(response)
         if not parsed:
-            logger.warning("Failed to parse mapping response")
+            logger.warning("Failed to get mapping response", chunk_id=chunk_id)
             return
 
         if "mapping_content" in parsed:
@@ -257,7 +252,7 @@ class MetaExtractor(BaseExtractor):
             content=content[:8000],  # Limit content to avoid token overflow
         )
 
-        response = call_llm(
+        parsed = call_llm_json(
             prompt,
             system_prompt=(
                 "You are a creative visionary with high standards. "
@@ -269,13 +264,8 @@ class MetaExtractor(BaseExtractor):
             max_tokens=3000,
         )
 
-        if not response:
-            logger.warning("LLM returned no response for eureka evaluation")
-            return
-
-        parsed = parse_json_response(response)
         if not parsed:
-            logger.warning("Failed to parse eureka response")
+            logger.warning("Failed to get eureka response", chunk_id=chunk_id)
             return
 
         was_updated = parsed.get("updated", False)

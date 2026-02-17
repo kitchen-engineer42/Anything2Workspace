@@ -1,6 +1,7 @@
 """Step 1: Bucketing — Group SKUs by similarity into token-limited buckets."""
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -227,6 +228,12 @@ class BucketingPostprocessor(BasePostprocessor):
         except ValueError:
             return np.zeros((len(texts), len(texts)))
 
+    @staticmethod
+    def _word_boundary_match(label: str, text: str) -> bool:
+        """Check if label appears in text as a whole word (not as a substring)."""
+        pattern = r'\b' + re.escape(label.lower()) + r'\b'
+        return bool(re.search(pattern, text))
+
     def _assign_labels(
         self,
         entries: list[BucketEntry],
@@ -235,13 +242,13 @@ class BucketingPostprocessor(BasePostprocessor):
         """
         Assign label paths to each SKU by matching against the label tree.
 
-        Peeling onion: match root → child → grandchild layer by layer.
+        Uses word-boundary matching to prevent partial matches
+        (e.g., "risk" won't match "asterisk").
         """
         all_paths = label_tree.get_all_paths()
         if not all_paths:
             return [[] for _ in entries]
 
-        # Build flat list of all label names at each level
         result = []
         for entry in entries:
             text = f"{entry.name} {entry.description}".lower()
@@ -249,7 +256,10 @@ class BucketingPostprocessor(BasePostprocessor):
             best_score = 0
 
             for path in all_paths:
-                score = sum(1 for label in path if label.lower() in text)
+                score = sum(
+                    1 for label in path
+                    if self._word_boundary_match(label, text)
+                )
                 if score > best_score:
                     best_score = score
                     best_path = path

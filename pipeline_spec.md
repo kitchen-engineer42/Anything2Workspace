@@ -1,7 +1,7 @@
 # Anything2Workspace Pipeline Specification
 
-**Version**: 1.3
-**Last Updated**: 2026-02-16
+**Version**: 1.4
+**Last Updated**: 2026-02-17
 **Status**: Modules 1-4 Complete, Module 5 Pending
 
 ---
@@ -74,7 +74,7 @@ Markdown tables are lossy for structured data. A 1000-row spreadsheet becomes un
 
 | Extension | Primary Parser | Fallback | Rationale |
 |-----------|---------------|----------|-----------|
-| `.pdf` | MarkItDown | MinerU API | MarkItDown is fast and free. MinerU (VLM-based) handles scanned/image-heavy PDFs but costs money and is slower. |
+| `.pdf` | MarkItDown | PaddleOCR-VL | MarkItDown is fast and free. PaddleOCR-VL (vision-language OCR) handles scanned/image-heavy PDFs via SiliconFlow API. Replaced MinerU (disabled due to network issues). |
 | `.pptx`, `.ppt` | MarkItDown | - | Microsoft's own library handles these well |
 | `.docx`, `.doc` | MarkItDown | - | Same as above |
 | `.mp3`, `.mp4`, `.wav` | MarkItDown | - | Uses speech recognition for transcription |
@@ -84,9 +84,14 @@ Markdown tables are lossy for structured data. A 1000-row spreadsheet becomes un
 | `.xlsx`, `.xls` | TabularParser | - | Converts to JSON, not Markdown |
 | `.csv` | TabularParser | - | Same as above |
 
-**MinerU Fallback Trigger** (currently disabled due to network issues):
-- File size > 10MB (`MAX_PDF_SIZE_MB`)
-- MarkItDown output has < 500 valid characters (`MIN_VALID_CHARS`)
+**OCR Fallback Trigger** (PaddleOCR-VL):
+- MarkItDown output has < 500 valid characters (`MIN_VALID_CHARS`) → falls back to PaddleOCR-VL
+- Renders each page to PNG via PyMuPDF at configurable DPI, sends to vision API
+- Retries once per page on failure, inserts placeholder for unrecoverable pages
+- Previous MinerU fallback disabled due to Alibaba Cloud Shanghai network issues
+- **Dual backend**: SiliconFlow API (default, `PaddlePaddle/PaddleOCR-VL-1.5`) or local mlx-vlm server (`mlx-community/PaddleOCR-VL-1.5-8bit`)
+- Set `OCR_BASE_URL=http://localhost:8080` for local deployment; leave empty to use SiliconFlow API
+- Local server bypasses system proxy automatically; strips `<|LOC_xxx|>` bounding-box tokens from output
 
 #### URL Inputs
 
@@ -178,8 +183,14 @@ MINERU_API_KEY=xxx            # For VLM PDF parsing
 FIRECRAWL_API_KEY=xxx         # For website crawling
 
 # Thresholds
-MAX_PDF_SIZE_MB=10            # MinerU trigger (disabled)
-MIN_VALID_CHARS=500           # Quality threshold
+MAX_PDF_SIZE_MB=10            # Size threshold (unused, MinerU disabled)
+MIN_VALID_CHARS=500           # Quality threshold for OCR fallback
+
+# PaddleOCR-VL (scanned PDF OCR)
+PADDLEOCR_MODEL=PaddlePaddle/PaddleOCR-VL-1.5  # SiliconFlow model ID
+OCR_DPI=150                   # Page render resolution
+OCR_PAGE_TIMEOUT=60           # Per-page API timeout (seconds)
+OCR_BASE_URL=                 # Empty = SiliconFlow API; http://localhost:8080 = local mlx-vlm
 
 # Retry
 RETRY_COUNT=1
@@ -1104,7 +1115,9 @@ pandas>=2.0.0                 # Tabular data
 openpyxl>=3.1.0              # Excel support
 xlrd>=2.0.1                  # Legacy Excel
 PyPDF2>=3.0.0                # PDF utilities
+PyMuPDF>=1.24.0              # PDF page rendering (OCR pipeline)
 httpx>=0.27.0                # HTTP client
+# Optional: mlx-vlm           # Local PaddleOCR-VL deployment on Apple Silicon
 
 # Module 2
 tiktoken>=0.7.0              # Token estimation
@@ -1131,7 +1144,7 @@ repomix                      # Git repo → Markdown
 
 ## Appendix B: Known Limitations
 
-1. **MinerU disabled**: Network issues to Alibaba Cloud Shanghai. Using MarkItDown for all PDFs.
+1. **MinerU disabled**: Network issues to Alibaba Cloud Shanghai. Replaced with PaddleOCR-VL as OCR fallback for scanned PDFs. Supports dual backend: SiliconFlow API or local mlx-vlm on Apple Silicon.
 
 2. **Nested folder testing**: Walk function implemented but not stress-tested with deep nesting.
 

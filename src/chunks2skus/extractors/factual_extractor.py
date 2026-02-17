@@ -7,7 +7,7 @@ from typing import Any
 import structlog
 
 from chunks2skus.schemas.sku import SKUHeader, SKUType
-from chunks2skus.utils.llm_client import call_llm, parse_json_response
+from chunks2skus.utils.llm_client import call_llm_json
 
 from .base import BaseExtractor
 
@@ -97,18 +97,12 @@ class FactualExtractor(BaseExtractor):
         """
         logger.info("Extracting factual knowledge", chunk_id=chunk_id)
 
-        # Call LLM for extraction
+        # Call LLM for extraction with structured output + retry
         prompt = FACTUAL_PROMPT.format(content=content)
-        response = call_llm(prompt)
+        parsed = call_llm_json(prompt)
 
-        if not response:
-            logger.warning("LLM returned no response for factual extraction")
-            return []
-
-        # Parse response
-        parsed = parse_json_response(response)
         if not parsed or "facts" not in parsed:
-            logger.warning("Failed to parse factual extraction response")
+            logger.warning("Failed to get factual extraction response", chunk_id=chunk_id)
             return []
 
         facts = parsed.get("facts", [])

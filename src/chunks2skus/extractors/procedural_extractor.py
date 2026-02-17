@@ -6,7 +6,7 @@ from typing import Any
 import structlog
 
 from chunks2skus.schemas.sku import SKUHeader, SKUType
-from chunks2skus.utils.llm_client import call_llm, parse_json_response
+from chunks2skus.utils.llm_client import call_llm_json
 
 from .base import BaseExtractor
 
@@ -103,18 +103,12 @@ class ProceduralExtractor(BaseExtractor):
         """
         logger.info("Extracting procedural knowledge", chunk_id=chunk_id)
 
-        # Call LLM for extraction
+        # Call LLM for extraction with structured output + retry
         prompt = PROCEDURAL_PROMPT.format(content=content)
-        response = call_llm(prompt, max_tokens=6000)
+        parsed = call_llm_json(prompt, max_tokens=6000)
 
-        if not response:
-            logger.warning("LLM returned no response for procedural extraction")
-            return []
-
-        # Parse response
-        parsed = parse_json_response(response)
         if not parsed or "procedures" not in parsed:
-            logger.warning("Failed to parse procedural extraction response")
+            logger.warning("Failed to get procedural extraction response", chunk_id=chunk_id)
             return []
 
         procedures = parsed.get("procedures", [])
