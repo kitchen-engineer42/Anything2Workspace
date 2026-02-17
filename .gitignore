@@ -45,6 +45,7 @@ logs/
 *.log
 module_design/
 dev_log/
+gaps_analysis.md
 
 # Test
 .pytest_cache/
