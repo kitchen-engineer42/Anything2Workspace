@@ -41,16 +41,17 @@ def run(chunks_dir: Path | None, output_dir: Path | None):
 
     index = pipeline.run()
 
-    click.echo(f"\nExtraction complete!")
-    click.echo(f"  Total SKUs: {index.total_skus}")
-    click.echo(f"  Total characters: {index.total_characters:,}")
-    click.echo(f"  Chunks processed: {len(index.chunks_processed)}")
-    click.echo(f"\nBy type:")
-    click.echo(f"  Factual: {index.factual_count}")
-    click.echo(f"  Relational: {index.relational_count}")
-    click.echo(f"  Procedural: {index.procedural_count}")
-    click.echo(f"  Meta: {index.meta_count}")
-    click.echo(f"\n  Output: {pipeline.output_dir}")
+    zh = settings.language == "zh"
+    click.echo(f"\n{'提取完成！' if zh else 'Extraction complete!'}")
+    click.echo(f"  {'SKU总数' if zh else 'Total SKUs'}: {index.total_skus}")
+    click.echo(f"  {'总字符数' if zh else 'Total characters'}: {index.total_characters:,}")
+    click.echo(f"  {'已处理片段数' if zh else 'Chunks processed'}: {len(index.chunks_processed)}")
+    click.echo(f"\n{'按类型统计：' if zh else 'By type:'}")
+    click.echo(f"  {'事实型' if zh else 'Factual'}: {index.factual_count}")
+    click.echo(f"  {'关系型' if zh else 'Relational'}: {index.relational_count}")
+    click.echo(f"  {'程序型' if zh else 'Procedural'}: {index.procedural_count}")
+    click.echo(f"  {'元知识' if zh else 'Meta'}: {index.meta_count}")
+    click.echo(f"\n  {'输出目录' if zh else 'Output'}: {pipeline.output_dir}")
 
 
 @main.command("extract-chunk")
@@ -138,15 +139,23 @@ def postprocess_all(skus_dir: Path | None, chunks_dir: Path | None):
     dedup = results["dedup"]
     proof = results["proofreading"]
 
-    click.echo("\nPostprocessing complete!")
-    click.echo(f"\n  Bucketing: {bucketing.total_buckets} buckets from {bucketing.total_skus} SKUs")
+    zh = settings.language == "zh"
+    click.echo(f"\n{'后处理完成！' if zh else 'Postprocessing complete!'}")
     click.echo(
-        f"  Dedup: {dedup.pairs_flagged} pairs flagged, "
-        f"{dedup.total_deleted} deleted, {dedup.total_kept} kept"
+        f"\n  {'分桶' if zh else 'Bucketing'}: "
+        f"{bucketing.total_buckets} {'个桶，来自' if zh else 'buckets from'} "
+        f"{bucketing.total_skus} {'个SKU' if zh else 'SKUs'}"
     )
     click.echo(
-        f"  Proofreading: {proof.total_scored} scored, "
-        f"avg confidence {proof.average_confidence:.3f}"
+        f"  {'去重' if zh else 'Dedup'}: "
+        f"{dedup.pairs_flagged} {'对标记' if zh else 'pairs flagged'}, "
+        f"{dedup.total_deleted} {'已删除' if zh else 'deleted'}, "
+        f"{dedup.total_kept} {'已保留' if zh else 'kept'}"
+    )
+    click.echo(
+        f"  {'校对' if zh else 'Proofreading'}: "
+        f"{proof.total_scored} {'已评分' if zh else 'scored'}, "
+        f"{'平均置信度' if zh else 'avg confidence'} {proof.average_confidence:.3f}"
     )
 
 

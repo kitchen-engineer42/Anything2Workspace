@@ -6,6 +6,7 @@ from typing import Any
 
 import structlog
 
+from chunks2skus.config import settings
 from chunks2skus.schemas.sku import SKUHeader, SKUType
 from chunks2skus.utils.llm_client import call_llm_json
 
@@ -14,7 +15,8 @@ from .base import BaseExtractor
 logger = structlog.get_logger(__name__)
 
 
-FACTUAL_PROMPT = '''You are extracting factual knowledge from a document chunk.
+FACTUAL_PROMPT = {
+    "en": '''You are extracting factual knowledge from a document chunk.
 
 Factual knowledge includes:
 - Basic facts, definitions, and data points
@@ -46,7 +48,42 @@ Output ONLY valid JSON:
 }}
 
 If no factual knowledge is found, return: {{"facts": []}}
-'''
+''',
+
+    "zh": '''你正在从文档片段中提取事实性知识。
+
+事实性知识包括：
+- 基本事实、定义和数据点
+- 统计数据和度量指标
+- "是什么"类信息
+- 描述性细节
+
+文档片段内容：
+{content}
+
+任务：
+提取独立的事实性知识单元。每个单元应当自包含。
+对于结构化/表格数据，使用JSON格式。对于叙述性事实，使用markdown格式。
+
+遵循MECE原则（相互独立，完全穷尽）：
+- 各事实之间不应重叠
+- 覆盖片段中的所有事实性内容
+
+仅输出合法JSON：
+{{
+  "facts": [
+    {{
+      "name": "short-identifier-name",
+      "description": "该事实单元的一句话摘要",
+      "content_type": "markdown" or "json",
+      "content": "实际的事实性内容（markdown为字符串，json为对象/数组）"
+    }}
+  ]
+}}
+
+如果未发现事实性知识，返回：{{"facts": []}}
+''',
+}
 
 
 class FactualExtractor(BaseExtractor):
@@ -98,7 +135,7 @@ class FactualExtractor(BaseExtractor):
         logger.info("Extracting factual knowledge", chunk_id=chunk_id)
 
         # Call LLM for extraction with structured output + retry
-        prompt = FACTUAL_PROMPT.format(content=content)
+        prompt = FACTUAL_PROMPT[settings.language].format(content=content)
         parsed = call_llm_json(prompt)
 
         if not parsed or "facts" not in parsed:

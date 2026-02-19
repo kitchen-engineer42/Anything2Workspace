@@ -72,15 +72,16 @@ def run(input_dir: Path | None, output_dir: Path | None, verbose: bool):
         summary = pipeline.get_summary()
 
         # Print summary to console
+        zh = settings.language == "zh"
         click.echo("")
         click.echo("=" * 50)
-        click.echo("Pipeline Complete")
+        click.echo("流水线完成" if zh else "Pipeline Complete")
         click.echo("=" * 50)
-        click.echo(f"Total processed: {summary['total']}")
-        click.echo(f"  Success: {summary['success']}")
-        click.echo(f"  Failed: {summary['failed']}")
-        click.echo(f"  Skipped: {summary['skipped']}")
-        click.echo(f"Output directory: {settings.output_dir}")
+        click.echo(f"{'总处理数' if zh else 'Total processed'}: {summary['total']}")
+        click.echo(f"  {'成功' if zh else 'Success'}: {summary['success']}")
+        click.echo(f"  {'失败' if zh else 'Failed'}: {summary['failed']}")
+        click.echo(f"  {'跳过' if zh else 'Skipped'}: {summary['skipped']}")
+        click.echo(f"{'输出目录' if zh else 'Output directory'}: {settings.output_dir}")
 
         # Exit with error code if any failures
         if summary["failed"] > 0:

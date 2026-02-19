@@ -1,6 +1,7 @@
 """Parser using PaddleOCR-VL via SiliconFlow API or local mlx-vlm for scanned PDF OCR."""
 
 import base64
+import json
 import re
 from datetime import datetime
 from pathlib import Path
@@ -29,6 +30,9 @@ class PaddleOCRVLParser(BaseParser):
     Supports two backends:
     - SiliconFlow API (default): set SILICONFLOW_API_KEY
     - Local mlx-vlm server: set OCR_BASE_URL=http://localhost:8080
+
+    Saves progress incrementally to a .jsonl temp file so that OCR can
+    resume from the last completed page if the process is interrupted.
     """
 
     supported_extensions = [".pdf"]
@@ -45,6 +49,15 @@ class PaddleOCRVLParser(BaseParser):
             http_client = None
             if "localhost" in base_url or "127.0.0.1" in base_url:
                 http_client = httpx.Client(proxy=None)
+            else:
+                # Explicit timeout with separate read timeout to prevent hung connections
+                timeout = httpx.Timeout(
+                    connect=30.0,
+                    read=float(settings.ocr_page_timeout),
+                    write=30.0,
+                    pool=30.0,
+                )
+                http_client = httpx.Client(timeout=timeout)
             self.client = OpenAI(
                 api_key=api_key,
                 base_url=base_url,
@@ -108,40 +121,84 @@ class PaddleOCRVLParser(BaseParser):
 
         page_count = len(doc)
         pages_failed = 0
-        page_markdowns = []
+
+        # --- Incremental save / resume support ---
+        # Temp file stores one JSON line per page: {"page": 1, "text": "..."}
+        output_name = flatten_path(file_path, settings.input_dir) + ".md"
+        output_path = output_dir / output_name
+        # Ensure parent directory exists (for grouped outputs)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = output_dir / (output_name + ".progress.jsonl")
+
+        # Check for existing progress to resume from
+        page_markdowns: dict[int, str] = {}
+        start_page = 0
+        if temp_path.exists():
+            try:
+                for line in temp_path.read_text(encoding="utf-8").strip().splitlines():
+                    rec = json.loads(line)
+                    page_markdowns[rec["page"]] = rec["text"]
+                start_page = max(page_markdowns.keys()) + 1 if page_markdowns else 0
+                # Count failures from resumed data
+                pages_failed = sum(
+                    1 for t in page_markdowns.values() if t.startswith("<!-- OCR failed")
+                )
+                logger.info(
+                    "PaddleOCR-VL resuming from progress file",
+                    file=file_path.name,
+                    resumed_pages=len(page_markdowns),
+                    start_page=start_page + 1,
+                    total=page_count,
+                )
+            except Exception as e:
+                logger.warning("PaddleOCR-VL: corrupt progress file, starting fresh", error=str(e))
+                page_markdowns = {}
+                start_page = 0
+                temp_path.unlink(missing_ok=True)
 
         logger.info(
             "PaddleOCR-VL starting OCR",
             file=file_path.name,
             pages=page_count,
+            start_page=start_page + 1,
             dpi=settings.ocr_dpi,
             model=settings.paddleocr_model,
         )
 
-        for page_num in range(page_count):
-            page_md = self._ocr_page(doc[page_num], page_num + 1)
-            if page_md is None:
-                pages_failed += 1
-                page_markdowns.append(f"<!-- OCR failed: page {page_num + 1} -->")
-            else:
-                page_markdowns.append(page_md)
+        # Open temp file in append mode for incremental writes
+        with open(temp_path, "a", encoding="utf-8") as progress_f:
+            for page_num in range(start_page, page_count):
+                page_md = self._ocr_page(doc[page_num], page_num + 1)
+                if page_md is None:
+                    pages_failed += 1
+                    text = f"<!-- OCR failed: page {page_num + 1} -->"
+                else:
+                    text = page_md
 
-            if (page_num + 1) % 10 == 0:
-                logger.info(
-                    "PaddleOCR-VL progress",
-                    file=file_path.name,
-                    page=page_num + 1,
-                    total=page_count,
-                    failed_so_far=pages_failed,
-                )
+                page_markdowns[page_num] = text
+                # Write progress immediately so it survives crashes
+                progress_f.write(json.dumps({"page": page_num, "text": text}, ensure_ascii=False) + "\n")
+                progress_f.flush()
+
+                if (page_num + 1) % 10 == 0:
+                    logger.info(
+                        "PaddleOCR-VL progress",
+                        file=file_path.name,
+                        page=page_num + 1,
+                        total=page_count,
+                        failed_so_far=pages_failed,
+                    )
 
         doc.close()
 
-        content = "\n\n---\n\n".join(page_markdowns)
+        # Assemble final output from all pages in order
+        all_pages = [page_markdowns.get(i, f"<!-- OCR missing: page {i + 1} -->") for i in range(page_count)]
+        content = "\n\n---\n\n".join(all_pages)
 
-        output_name = flatten_path(file_path, settings.input_dir) + ".md"
-        output_path = output_dir / output_name
         output_path.write_text(content, encoding="utf-8")
+
+        # Clean up progress file on successful completion
+        temp_path.unlink(missing_ok=True)
 
         completed_at = datetime.now()
 

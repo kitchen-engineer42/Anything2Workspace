@@ -16,7 +16,8 @@ from .base import BaseChunker
 logger = structlog.get_logger(__name__)
 
 
-CHUNKING_PROMPT = '''You are analyzing a document section to find logical break points.
+CHUNKING_PROMPT = {
+    "en": '''You are analyzing a document section to find logical break points.
 
 CONTENT:
 {content}
@@ -44,7 +45,38 @@ Guidelines:
 - Keep related concepts together
 - Prefer cuts between major topics or ideas
 - First cut_point is your most recommended
-- Copy text EXACTLY as it appears'''
+- Copy text EXACTLY as it appears''',
+
+    "zh": '''你正在分析一段文档内容，寻找合理的分割点。
+
+内容：
+{content}
+
+任务：
+找出1-3个自然的分割点，将文本拆分为独立的片段。
+对每个分割点，提供：
+1. 分割点之前的约{k}个token（原文复制）
+2. 分割点之后的约{k}个token（原文复制）
+3. 在此分割点结束的片段的简短标题（5-10个字）
+
+仅输出合法JSON（不要markdown，不要解释）：
+{{
+  "cut_points": [
+    {{
+      "tokens_before": "...分割点前的原文...",
+      "tokens_after": "...分割点后的原文...",
+      "chunk_title": "前一片段的标题"
+    }}
+  ]
+}}
+
+注意事项：
+- 尽量在段落边界处分割
+- 将相关概念保持在一起
+- 优先在主要话题或观点之间分割
+- 第一个 cut_point 是你最推荐的分割点
+- 必须原样复制文本，不得修改''',
+}
 
 
 class LLMChunker(BaseChunker):
@@ -218,14 +250,17 @@ class LLMChunker(BaseChunker):
             List of cut point dicts, or None on failure
         """
         try:
-            prompt = CHUNKING_PROMPT.format(content=content, k=self.k_tokens)
+            prompt = CHUNKING_PROMPT[settings.language].format(content=content, k=self.k_tokens)
 
             response = self.client.chat.completions.create(
                 model=settings.chunking_model,
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a document analyst. Output ONLY valid JSON.",
+                        "content": {
+                            "en": "You are a document analyst. Output ONLY valid JSON.",
+                            "zh": "你是一名文档分析师。仅输出合法JSON。",
+                        }[settings.language],
                     },
                     {"role": "user", "content": prompt},
                 ],

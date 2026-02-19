@@ -117,9 +117,10 @@ class Anything2MarkdownPipeline:
         Process a single file.
 
         Handles:
-        1. Route to appropriate parser
-        2. Parse file
-        3. Check for MinerU fallback (PDFs with low quality)
+        1. Skip if output already exists (resume support)
+        2. Route to appropriate parser
+        3. Parse file
+        4. Check for MinerU fallback (PDFs with low quality)
 
         Args:
             file_path: Path to the file
@@ -132,6 +133,29 @@ class Anything2MarkdownPipeline:
         try:
             # Route to appropriate parser
             parser = self.router.route_file(file_path)
+
+            # Skip if non-empty output already exists (resume after interruption)
+            from .utils.file_utils import flatten_path
+            flat_stem = flatten_path(file_path, settings.input_dir)
+            expected_output = settings.output_dir / (flat_stem + ".md")
+            if not expected_output.exists():
+                expected_output = settings.output_dir / (flat_stem + ".json")
+            if expected_output.exists() and expected_output.stat().st_size > 0:
+                logger.info("Skipping already-processed file", file=file_path.name, output=expected_output.name)
+                content = expected_output.read_text(encoding="utf-8")
+                return ParseResult(
+                    source_path=file_path,
+                    output_path=expected_output,
+                    source_type="file",
+                    parser_used=parser.parser_name,
+                    status="success",
+                    started_at=datetime.now(),
+                    completed_at=datetime.now(),
+                    duration_seconds=0,
+                    output_format="markdown",
+                    character_count=len(content),
+                    metadata={"resumed": True},
+                )
 
             # Parse the file
             result = parser.parse(file_path, settings.output_dir)

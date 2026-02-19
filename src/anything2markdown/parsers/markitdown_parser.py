@@ -26,14 +26,9 @@ class MarkItDownParser(BaseParser):
         ".pptx",
         ".doc",
         ".docx",
-        ".mp3",
-        ".mp4",
-        ".wav",
-        ".jpg",
-        ".jpeg",
-        ".png",
         ".html",
         ".htm",
+        ".epub",
         ".md",
         ".txt",
     ]
@@ -70,6 +65,9 @@ class MarkItDownParser(BaseParser):
             # Generate flattened output filename
             output_name = flatten_path(file_path, settings.input_dir) + ".md"
             output_path = output_dir / output_name
+
+            # Ensure parent directory exists (for grouped outputs)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
 
             # Write output
             output_path.write_text(content, encoding="utf-8")

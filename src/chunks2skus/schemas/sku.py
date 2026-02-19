@@ -35,17 +35,32 @@ class SKUHeader(BaseModel):
 
     def to_markdown(self) -> str:
         """Render header as markdown."""
-        lines = [
-            f"# {self.name}",
-            "",
-            f"- **Classification**: {self.classification.value}",
-            f"- **Source**: {self.source_chunk}",
-            f"- **Characters**: {self.character_count:,}",
-        ]
-        if self.confidence is not None:
-            lines.append(f"- **Confidence**: {self.confidence:.2f}")
-        if self.related_skus:
-            lines.append(f"- **Related SKUs**: {', '.join(self.related_skus)}")
+        from chunks2skus.config import settings
+
+        if settings.language == "zh":
+            lines = [
+                f"# {self.name}",
+                "",
+                f"- **分类**: {self.classification.value}",
+                f"- **来源**: {self.source_chunk}",
+                f"- **字符数**: {self.character_count:,}",
+            ]
+            if self.confidence is not None:
+                lines.append(f"- **置信度**: {self.confidence:.2f}")
+            if self.related_skus:
+                lines.append(f"- **相关SKU**: {', '.join(self.related_skus)}")
+        else:
+            lines = [
+                f"# {self.name}",
+                "",
+                f"- **Classification**: {self.classification.value}",
+                f"- **Source**: {self.source_chunk}",
+                f"- **Characters**: {self.character_count:,}",
+            ]
+            if self.confidence is not None:
+                lines.append(f"- **Confidence**: {self.confidence:.2f}")
+            if self.related_skus:
+                lines.append(f"- **Related SKUs**: {', '.join(self.related_skus)}")
         lines.append("")
         lines.append(self.description)
         lines.append("")

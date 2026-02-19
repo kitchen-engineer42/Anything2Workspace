@@ -5,6 +5,7 @@ from typing import Any
 
 import structlog
 
+from chunks2skus.config import settings
 from chunks2skus.schemas.sku import SKUHeader, SKUType
 from chunks2skus.utils.llm_client import call_llm_json
 
@@ -14,7 +15,8 @@ logger = structlog.get_logger(__name__)
 
 
 # Prompt for mapping.md - ACCURACY focused
-MAPPING_PROMPT = '''You are updating a precise routing document for a knowledge workspace.
+MAPPING_PROMPT = {
+    "en": '''You are updating a precise routing document for a knowledge workspace.
 
 Your task is to maintain mapping.md - a ROUTER that helps agents find the right SKUs.
 
@@ -45,11 +47,51 @@ Output ONLY valid JSON:
 {{
   "mapping_content": "Full markdown content for mapping.md"
 }}
-'''
+''',
+
+    "zh": '''你正在更新知识工作空间的精确路由文档。
+
+你的任务是维护 mapping.md —— 一个帮助代理找到正确SKU的路由器。
+
+要求：
+- 准确、精确——不得编造
+- 仅包含实际存在的SKU（列表如下）
+- 精确描述每个SKU的使用场景
+- 将相关SKU进行逻辑分组
+- 使用清晰、无歧义的语言
+
+当前SKU列表（仅有以下SKU存在）：
+{sku_list}
+
+现有 MAPPING.md：
+{mapping}
+
+正在处理的新片段：
+{chunk_id}
+
+任务：
+更新 mapping.md，纳入本片段产生的新SKU。
+- 将新SKU添加到合适的分区
+- 按需更新分组
+- 保持描述的事实性和精确性
+- 不得编造不存在的SKU
+
+仅输出合法JSON：
+{{
+  "mapping_content": "mapping.md 的完整 markdown 内容"
+}}
+''',
+}
+
+MAPPING_SYSTEM_PROMPT = {
+    "en": "You are a precise documentation assistant. Be accurate and factual. Never invent or hallucinate information.",
+    "zh": "你是一个精确的文档助手。务必准确、基于事实。绝不编造信息。",
+}
 
 
 # Prompt for eureka.md - CREATIVITY focused, READ-AND-UPDATE mode
-EUREKA_PROMPT = '''You are a creative analyst maintaining a concise document of cross-cutting insights.
+EUREKA_PROMPT = {
+    "en": '''You are a creative analyst maintaining a concise document of cross-cutting insights.
 
 EXISTING EUREKA NOTES:
 {existing_eureka}
@@ -97,7 +139,101 @@ If no novel insight is found, return:
   "updated": false,
   "eureka_content": ""
 }}
-'''
+''',
+
+    "zh": '''你是一位创意分析师，负责维护一份简明的跨领域洞察文档。
+
+现有灵感笔记：
+{existing_eureka}
+
+正在处理的新片段：
+片段ID：{chunk_id}
+内容（摘录）：
+{content}
+
+任务：
+审阅新片段，判断它是否贡献了现有灵感笔记中尚未记录的真正新颖洞察。
+大多数片段不会需要更新——这是正常且正确的。
+
+洞察只在以下情况才合格：
+1. 识别出跨越多个领域或概念的交叉模式
+2. 揭示看似无关领域之间的意外联系
+3. 提出非显而易见的设计原则或可复用机制
+4. 提出重新构建理解的根本性问题
+
+以下情况不合格：
+- 内容的直接应用（"这些数据可以做仪表盘"）
+- 以不同名称重复已记录的模式
+- 特定领域的而非跨领域的洞察
+- 没有深层结构性洞察的功能建议
+
+规则：
+- 返回完整的更新后 eureka.md 内容（不只是新增部分）
+- 按主题（## 标题）组织，而非按源片段
+- 附加源片段ID作为行内引用：[chunk_001, chunk_005]
+- 当新洞察加强已有条目时，合并并更新引用
+- 当已有条目被更好的表述取代时，删除旧条目
+- 所有主题合计最多20条
+- 如果不需要更新，原样返回现有内容
+- 使用简洁精确的语言——每条一句话
+
+仅输出合法JSON：
+{{
+  "updated": true,
+  "eureka_content": "eureka.md 的完整 markdown 内容"
+}}
+
+如果未发现新颖洞察，返回：
+{{
+  "updated": false,
+  "eureka_content": ""
+}}
+''',
+}
+
+EUREKA_SYSTEM_PROMPT = {
+    "en": (
+        "You are a creative visionary with high standards. "
+        "Surface only insights that reveal structural patterns, surprising "
+        "connections, or reusable design principles. Most chunks will not "
+        "warrant an update. Quality over quantity."
+    ),
+    "zh": (
+        "你是一位高标准的创意思想家。"
+        "仅呈现揭示结构性模式、意外联系或可复用设计原则的洞察。"
+        "大多数片段不需要更新。质量重于数量。"
+    ),
+}
+
+INIT_MAPPING = {
+    "en": (
+        "# SKU Mapping\n\n"
+        "This file maps all Standard Knowledge Units (SKUs) to their use cases.\n\n"
+        "---\n\n"
+        "*No SKUs mapped yet.*\n"
+    ),
+    "zh": (
+        "# SKU 映射\n\n"
+        "本文件将所有标准知识单元（SKU）映射到其使用场景。\n\n"
+        "---\n\n"
+        "*尚未映射任何 SKU。*\n"
+    ),
+}
+
+INIT_EUREKA = {
+    "en": (
+        "# Eureka Notes\n\n"
+        "Cross-cutting insights and creative ideas discovered during knowledge extraction.\n\n"
+        "---\n\n"
+        "*No insights yet.*\n"
+    ),
+    "zh": (
+        "# 灵感笔记\n\n"
+        "知识提取过程中发现的跨领域洞察和创意。\n\n"
+        "---\n\n"
+        "*暂无洞察。*\n"
+    ),
+}
 
 
 class MetaExtractor(BaseExtractor):
@@ -125,19 +261,13 @@ class MetaExtractor(BaseExtractor):
         """Initialize mapping.md, eureka.md, and header.md if they don't exist."""
         if not self.mapping_path.exists():
             self.mapping_path.write_text(
-                "# SKU Mapping\n\n"
-                "This file maps all Standard Knowledge Units (SKUs) to their use cases.\n\n"
-                "---\n\n"
-                "*No SKUs mapped yet.*\n",
+                INIT_MAPPING[settings.language],
                 encoding="utf-8",
             )
 
         if not self.eureka_path.exists():
             self.eureka_path.write_text(
-                "# Eureka Notes\n\n"
-                "Cross-cutting insights and creative ideas discovered during knowledge extraction.\n\n"
-                "---\n\n"
-                "*No insights yet.*\n",
+                INIT_EUREKA[settings.language],
                 encoding="utf-8",
             )
 
@@ -208,7 +338,7 @@ class MetaExtractor(BaseExtractor):
         sku_list = self._format_sku_list(context)
         current_mapping = self.mapping_path.read_text(encoding="utf-8")
 
-        prompt = MAPPING_PROMPT.format(
+        prompt = MAPPING_PROMPT[settings.language].format(
             sku_list=sku_list,
             mapping=current_mapping,
             chunk_id=chunk_id,
@@ -217,7 +347,7 @@ class MetaExtractor(BaseExtractor):
         # Low temperature for accuracy, with structured output + retry
         parsed = call_llm_json(
             prompt,
-            system_prompt="You are a precise documentation assistant. Be accurate and factual. Never invent or hallucinate information.",
+            system_prompt=MAPPING_SYSTEM_PROMPT[settings.language],
             temperature=0.2,
             max_tokens=8000,
         )
@@ -246,7 +376,7 @@ class MetaExtractor(BaseExtractor):
 
         current_eureka = self.eureka_path.read_text(encoding="utf-8")
 
-        prompt = EUREKA_PROMPT.format(
+        prompt = EUREKA_PROMPT[settings.language].format(
             existing_eureka=current_eureka,
             chunk_id=chunk_id,
             content=content[:8000],  # Limit content to avoid token overflow
@@ -254,12 +384,7 @@ class MetaExtractor(BaseExtractor):
 
         parsed = call_llm_json(
             prompt,
-            system_prompt=(
-                "You are a creative visionary with high standards. "
-                "Surface only insights that reveal structural patterns, surprising "
-                "connections, or reusable design principles. Most chunks will not "
-                "warrant an update. Quality over quantity."
-            ),
+            system_prompt=EUREKA_SYSTEM_PROMPT[settings.language],
             temperature=0.7,
             max_tokens=3000,
         )

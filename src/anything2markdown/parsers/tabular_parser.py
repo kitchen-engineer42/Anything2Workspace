@@ -78,6 +78,9 @@ class TabularParser(BaseParser):
             output_name = flatten_path(file_path, settings.input_dir) + ".json"
             output_path = output_dir / output_name
 
+            # Ensure parent directory exists (for grouped outputs)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
             # Write output
             output_path.write_text(json_content, encoding="utf-8")
 

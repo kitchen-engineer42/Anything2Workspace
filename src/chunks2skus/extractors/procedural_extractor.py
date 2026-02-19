@@ -5,6 +5,7 @@ from typing import Any
 
 import structlog
 
+from chunks2skus.config import settings
 from chunks2skus.schemas.sku import SKUHeader, SKUType
 from chunks2skus.utils.llm_client import call_llm_json
 
@@ -13,7 +14,8 @@ from .base import BaseExtractor
 logger = structlog.get_logger(__name__)
 
 
-PROCEDURAL_PROMPT = '''You are extracting procedural knowledge from a document chunk.
+PROCEDURAL_PROMPT = {
+    "en": '''You are extracting procedural knowledge from a document chunk.
 
 Procedural knowledge includes:
 - Workflows and step-by-step processes
@@ -52,7 +54,49 @@ Skill Format Guidelines:
 - references: Optional supporting documentation
 
 If no procedural knowledge is found, return: {{"procedures": []}}
-'''
+''',
+
+    "zh": '''你正在从文档片段中提取程序性知识。
+
+程序性知识包括：
+- 工作流程和分步操作
+- 分析框架和方法论
+- 决策流程
+- 最佳实践和指南
+- 可操作的技能和技巧
+
+文档片段内容：
+{content}
+
+任务：
+提取独立的程序性知识单元。每个单元应当是完整、可操作的流程。
+以Claude Code兼容的技能格式输出。
+
+仅输出合法JSON：
+{{
+  "procedures": [
+    {{
+      "name": "skill-name-in-hyphen-case",
+      "description": "何时使用此技能（最多200字符，不使用尖括号）",
+      "body": "完整的markdown说明，包括：\\n- 概述\\n- 步骤（编号或列表）\\n- 决策点（如有）\\n- 预期结果",
+      "has_scripts": false,
+      "scripts": [],
+      "has_references": false,
+      "references": []
+    }}
+  ]
+}}
+
+技能格式要求：
+- name：小写字母，连字符分隔，最多64字符（如 "risk-assessment-workflow"）
+- description：纯文本，说明何时使用，不使用尖括号
+- body：markdown格式，结构清晰
+- scripts：可选的Python/Bash代码，用于确定性操作
+- references：可选的参考文档
+
+如果未发现程序性知识，返回：{{"procedures": []}}
+''',
+}
 
 
 class ProceduralExtractor(BaseExtractor):
@@ -104,7 +148,7 @@ class ProceduralExtractor(BaseExtractor):
         logger.info("Extracting procedural knowledge", chunk_id=chunk_id)
 
         # Call LLM for extraction with structured output + retry
-        prompt = PROCEDURAL_PROMPT.format(content=content)
+        prompt = PROCEDURAL_PROMPT[settings.language].format(content=content)
         parsed = call_llm_json(prompt, max_tokens=6000)
 
         if not parsed or "procedures" not in parsed:

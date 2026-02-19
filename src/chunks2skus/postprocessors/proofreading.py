@@ -17,12 +17,19 @@ from chunks2skus.utils.llm_client import call_llm_json
 logger = structlog.get_logger(__name__)
 
 
-CONFIDENCE_SYSTEM_PROMPT = (
-    "You are a fact-checking assistant that evaluates knowledge units. "
-    "Output ONLY valid JSON."
-)
+CONFIDENCE_SYSTEM_PROMPT = {
+    "en": (
+        "You are a fact-checking assistant that evaluates knowledge units. "
+        "Output ONLY valid JSON."
+    ),
+    "zh": (
+        "你是一个事实核查助手，负责评估知识单元。"
+        "仅输出合法JSON。"
+    ),
+}
 
-CONFIDENCE_PROMPT = """You must evaluate this SKU in TWO separate steps. Both are required.
+CONFIDENCE_PROMPT = {
+    "en": """You must evaluate this SKU in TWO separate steps. Both are required.
 
 SKU ({sku_id}):
 Name: {name}
@@ -67,7 +74,55 @@ Return JSON:
     "confidence": 0.75,
     "reasoning": "brief explanation — what did web say? any source issues?",
     "web_references": ["url1", "url2"]
-}}"""
+}}""",
+
+    "zh": """你必须分两个独立步骤评估此SKU。两步都是必需的。
+
+SKU ({sku_id})：
+名称：{name}
+描述：{description}
+内容：
+{content}
+
+---
+
+第1步 — 来源完整性检查（仅扣分）
+
+原始来源片段（提取此SKU的文本）：
+{source_chunk}
+
+将SKU与其来源片段进行比较。此检查只能降低置信度，不能提高。
+- 如果SKU忠实反映了来源 → 不扣分（提取正确，继续）
+- 如果SKU扭曲、编造或与来源矛盾 → 严重扣分，将 source_penalty 设为 0.2 到 0.5 之间的值
+- 如果来源不可用 → 不扣分，跳过此步
+
+---
+
+第2步 — 外部验证（真正的置信度信号）
+
+网络搜索结果：
+{web_results}
+
+置信度的真正来源。此SKU中的声明是否经得起独立外部来源的验证？
+- 0.8-1.0：多个网络来源证实核心声明
+- 0.6-0.8：部分证实，有小缺口或无直接确认
+- 0.4-0.6：模糊——网络结果既不明确确认也不否认
+- 0.2-0.4：薄弱——外部支持很少，或主题太小众
+- 0.0-0.2：网络来源积极反驳SKU的声明
+
+---
+
+最终分数 = web_confidence - source_penalty（限制在 0.0-1.0 范围内）
+
+返回JSON：
+{{
+    "web_confidence": 0.75,
+    "source_penalty": 0.0,
+    "confidence": 0.75,
+    "reasoning": "简要说明——网络怎么说？来源有什么问题？",
+    "web_references": ["url1", "url2"]
+}}""",
+}
 
 
 class ProofreadingPostprocessor(BasePostprocessor):
@@ -171,7 +226,8 @@ class ProofreadingPostprocessor(BasePostprocessor):
             source_chunk_text = "(Original source chunk not available)"
 
         # LLM assessment
-        prompt = CONFIDENCE_PROMPT.format(
+        lang = settings.language
+        prompt = CONFIDENCE_PROMPT[lang].format(
             sku_id=sku_entry.sku_id,
             name=sku_entry.name,
             description=sku_entry.description,
@@ -182,7 +238,7 @@ class ProofreadingPostprocessor(BasePostprocessor):
 
         parsed = call_llm_json(
             prompt=prompt,
-            system_prompt=CONFIDENCE_SYSTEM_PROMPT,
+            system_prompt=CONFIDENCE_SYSTEM_PROMPT[lang],
             temperature=0.1,
             max_tokens=1000,
         )
@@ -278,19 +334,22 @@ class ProofreadingPostprocessor(BasePostprocessor):
 
         content = header_path.read_text(encoding="utf-8")
 
-        # Remove existing confidence line if present
-        content = re.sub(r"- \*\*Confidence\*\*:.*\n?", "", content)
+        # Remove existing confidence line if present (supports both EN and ZH labels)
+        content = re.sub(r"- \*\*(Confidence|置信度)\*\*:.*\n?", "", content)
 
-        # Insert confidence line after "Characters" line
-        chars_pattern = r"(- \*\*Characters\*\*:.*)"
+        # Insert confidence line after "Characters" or "字符数" line
+        chars_pattern = r"(- \*\*(Characters|字符数)\*\*:.*)"
         if re.search(chars_pattern, content):
+            # Use language-appropriate label
+            conf_label = "置信度" if settings.language == "zh" else "Confidence"
             content = re.sub(
                 chars_pattern,
-                rf"\1\n- **Confidence**: {confidence:.2f}",
+                rf"\1\n- **{conf_label}**: {confidence:.2f}",
                 content,
             )
         else:
             # Fallback: add before description (after last bullet)
-            content = content.rstrip() + f"\n- **Confidence**: {confidence:.2f}\n"
+            conf_label = "置信度" if settings.language == "zh" else "Confidence"
+            content = content.rstrip() + f"\n- **{conf_label}**: {confidence:.2f}\n"
 
         header_path.write_text(content, encoding="utf-8")

@@ -178,16 +178,19 @@ class HeaderChunker(BaseChunker):
         total = section.token_count
 
         for child in node.get("children", []):
-            # Children's content is already included in parent's content
-            # so we don't double-count
-            pass
+            total += self._calculate_subtree_tokens(child)
 
         return total
 
     def _extract_subtree_content(self, node: dict) -> str:
-        """Extract full content for a node (children already included)."""
+        """Extract full content for a node including all children."""
         section: MarkdownSection = node["section"]
-        return section.content
+        parts = [section.content]
+
+        for child in node.get("children", []):
+            parts.append(self._extract_subtree_content(child))
+
+        return "".join(parts)
 
     def _get_section_intro(self, section: MarkdownSection) -> str:
         """

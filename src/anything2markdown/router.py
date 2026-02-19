@@ -29,12 +29,6 @@ class Router:
         ".pptx": "markitdown",
         ".doc": "markitdown",
         ".docx": "markitdown",
-        ".mp3": "markitdown",
-        ".mp4": "markitdown",
-        ".wav": "markitdown",
-        ".jpg": "markitdown",
-        ".jpeg": "markitdown",
-        ".png": "markitdown",
         ".html": "markitdown",
         ".htm": "markitdown",
         ".epub": "markitdown",
@@ -44,6 +38,13 @@ class Router:
         ".xlsx": "tabular",
         ".xls": "tabular",
         ".csv": "tabular",
+    }
+
+    # Extensions to silently skip (no useful text content)
+    SKIP_EXTENSIONS = {
+        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".ico", ".webp", ".tiff",
+        ".mp3", ".mp4", ".wav", ".avi", ".mov", ".flv", ".wmv",
+        ".css", ".js", ".hhc", ".hhk",
     }
 
     # URL patterns for auto-detection
@@ -92,6 +93,11 @@ class Router:
             ValueError: If file type is not supported
         """
         extension = file_path.suffix.lower()
+
+        # Skip known non-text extensions silently
+        if extension in self.SKIP_EXTENSIONS:
+            logger.debug("Skipping non-text file", extension=extension, file=file_path.name)
+            raise ValueError(f"Skipped non-text file: {extension}")
 
         # Get initial parser based on extension
         parser_key = self.EXTENSION_MAP.get(extension)

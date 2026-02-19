@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     chunking_model: str = Field(default="Pro/Qwen/Qwen2.5-7B-Instruct")  # Fast model
     complex_model: str = Field(default="Pro/Qwen/Qwen2.5-72B-Instruct")  # Reserved
 
+    # Language
+    language: Literal["en", "zh"] = Field(default="en")
+
     # Logging
     log_level: str = Field(default="INFO")
     log_format: Literal["json", "text", "both"] = Field(default="both")

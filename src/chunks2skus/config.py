@@ -44,6 +44,9 @@ class Settings(BaseSettings):
         description="Fast model for dedup header scanning",
     )
 
+    # Language
+    language: Literal["en", "zh"] = Field(default="en")
+
     # Logging
     log_level: str = Field(default="INFO")
     log_format: Literal["json", "text", "both"] = Field(default="both")

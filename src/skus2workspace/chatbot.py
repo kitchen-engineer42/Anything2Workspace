@@ -17,7 +17,8 @@ MAPPING_SUMMARY_MAX_CHARS = 30000
 # Max characters from eureka.md to include
 EUREKA_SNIPPET_MAX_CHARS = 5000
 
-SYSTEM_PROMPT_TEMPLATE = """You are a product specification assistant helping a user design an application.
+SYSTEM_PROMPT_TEMPLATE = {
+    "en": """You are a product specification assistant helping a user design an application.
 
 You have access to a comprehensive knowledge base of Standard Knowledge Units (SKUs) organized into factual data, procedural skills, and relational knowledge. Your job is to:
 
@@ -37,12 +38,63 @@ RULES:
 - When drafting the spec, wrap it in a ```markdown code block
 - The user types /confirm to finalize the current spec
 - Be concise in your questions — ask 2-3 focused questions at a time
-- The spec should include: App name, Overview, Target users, Core features (with SKU references), Technical notes, and MVP scope"""
+- The spec should include: App name, Overview, Target users, Core features (with SKU references), Technical notes, and MVP scope""",
 
-FINALIZE_PROMPT = """The user has confirmed the spec. Please output the FINAL, clean version of spec.md.
+    "zh": """你是一个产品规格助手，帮助用户设计应用程序。
+
+你可以访问一个由标准知识单元（SKU）组成的综合知识库，包含事实数据、程序技能和关系知识。你的任务是：
+
+1. 询问用户的应用目标、目标用户和关键功能
+2. 根据用户回答起草 spec.md 文档
+3. 根据用户反馈迭代规格
+4. 用户满意后定稿
+
+可用知识库：
+{mapping_summary}
+
+知识库中的创意：
+{eureka_snippet}
+
+规则：
+- 使用工作空间相对路径引用SKU（如 skus/factual/sku_012、skus/procedural/skill_005）
+- 起草规格时，用 ```markdown 代码块包裹
+- 用户输入 /confirm 来确认当前规格
+- 提问要简洁——每次问2-3个针对性问题
+- 规格应包含：应用名称、概述、目标用户、核心功能（附SKU引用）、技术说明、MVP范围""",
+}
+
+FINALIZE_PROMPT = {
+    "en": """The user has confirmed the spec. Please output the FINAL, clean version of spec.md.
 
 Output ONLY the spec content inside a ```markdown code block. No extra commentary.
-Include all sections discussed. Make sure all SKU references use workspace-relative paths (skus/factual/..., skus/procedural/..., etc.)."""
+Include all sections discussed. Make sure all SKU references use workspace-relative paths (skus/factual/..., skus/procedural/..., etc.).""",
+
+    "zh": """用户已确认规格。请输出最终、整洁的 spec.md 版本。
+
+仅在 ```markdown 代码块内输出规格内容。不要额外评论。
+包含所有讨论过的章节。确保所有SKU引用使用工作空间相对路径（skus/factual/...、skus/procedural/... 等）。""",
+}
+
+UI_MESSAGES = {
+    "en": {
+        "finalizing": "\nFinalizing spec...",
+        "spec_saved": "\nspec.md saved to {path}",
+        "max_rounds": "\nMax rounds ({rounds}) reached. Auto-finalizing...",
+        "remaining": "  ({remaining} round remaining — type /confirm to finalize)",
+        "error_llm": "Error: Failed to get LLM response. Check your API key.",
+        "error_response": "Error: Failed to get LLM response.",
+        "chat_ended": "\nChat ended by user.",
+    },
+    "zh": {
+        "finalizing": "\n正在生成最终规格...",
+        "spec_saved": "\nspec.md 已保存至 {path}",
+        "max_rounds": "\n已达最大轮次（{rounds}）。自动生成最终规格...",
+        "remaining": "  （剩余 {remaining} 轮——输入 /confirm 确认规格）",
+        "error_llm": "错误：无法获取LLM响应。请检查API密钥。",
+        "error_response": "错误：无法获取LLM响应。",
+        "chat_ended": "\n用户结束对话。",
+    },
+}
 
 
 def _compress_mapping(content: str) -> str:
@@ -108,6 +160,8 @@ class SpecChatbot:
         self.workspace_dir = Path(workspace_dir).resolve()
         self.max_rounds = settings.max_chat_rounds
         self.session = ChatSession(max_rounds=self.max_rounds)
+        self.lang = settings.language
+        self.ui = UI_MESSAGES[self.lang]
 
     def run(self) -> str:
         """
@@ -127,7 +181,7 @@ class SpecChatbot:
         greeting = call_llm_chat(messages_for_api)
 
         if not greeting:
-            click.echo("Error: Failed to get LLM response. Check your API key.")
+            click.echo(self.ui["error_llm"])
             return ""
 
         self.session.messages.append(ChatMessage(role="assistant", content=greeting))
@@ -139,7 +193,7 @@ class SpecChatbot:
             try:
                 user_input = click.prompt("You", type=str)
             except (click.Abort, EOFError, KeyboardInterrupt):
-                click.echo("\nChat ended by user.")
+                click.echo(self.ui["chat_ended"])
                 break
 
             if not user_input.strip():
@@ -148,12 +202,12 @@ class SpecChatbot:
             # Check for /confirm
             if user_input.strip().lower() == "/confirm":
                 self.session.confirmed = True
-                click.echo("\nFinalizing spec...")
+                click.echo(self.ui["finalizing"])
                 spec = self._finalize()
                 if spec:
                     self.session.spec_content = spec
                     self._save_spec(spec)
-                    click.echo(f"\nspec.md saved to {self.workspace_dir / 'spec.md'}")
+                    click.echo(self.ui["spec_saved"].format(path=self.workspace_dir / "spec.md"))
                 return spec or ""
 
             # Add user message and increment round
@@ -162,7 +216,7 @@ class SpecChatbot:
 
             remaining = self.max_rounds - self.session.rounds_used
             if remaining <= 1:
-                click.echo(f"  ({remaining} round remaining — type /confirm to finalize)")
+                click.echo(self.ui["remaining"].format(remaining=remaining))
 
             # Get LLM response
             messages_for_api = [
@@ -171,7 +225,7 @@ class SpecChatbot:
             response = call_llm_chat(messages_for_api)
 
             if not response:
-                click.echo("Error: Failed to get LLM response.")
+                click.echo(self.ui["error_response"])
                 continue
 
             self.session.messages.append(ChatMessage(role="assistant", content=response))
@@ -179,12 +233,12 @@ class SpecChatbot:
 
         # Max rounds reached — auto-finalize
         if not self.session.confirmed:
-            click.echo(f"\nMax rounds ({self.max_rounds}) reached. Auto-finalizing...")
+            click.echo(self.ui["max_rounds"].format(rounds=self.max_rounds))
             spec = self._finalize()
             if spec:
                 self.session.spec_content = spec
                 self._save_spec(spec)
-                click.echo(f"\nspec.md saved to {self.workspace_dir / 'spec.md'}")
+                click.echo(self.ui["spec_saved"].format(path=self.workspace_dir / "spec.md"))
             return spec or ""
 
         return self.session.spec_content or ""
@@ -212,14 +266,16 @@ class SpecChatbot:
                 eureka_snippet += "\n... (truncated)"
             logger.info("Loaded eureka.md", chars=len(eureka_snippet))
 
-        return SYSTEM_PROMPT_TEMPLATE.format(
+        return SYSTEM_PROMPT_TEMPLATE[self.lang].format(
             mapping_summary=mapping_summary or "(no mapping available)",
             eureka_snippet=eureka_snippet or "(no eureka notes available)",
         )
 
     def _finalize(self) -> str | None:
         """Send finalize prompt and extract clean spec."""
-        self.session.messages.append(ChatMessage(role="user", content=FINALIZE_PROMPT))
+        self.session.messages.append(
+            ChatMessage(role="user", content=FINALIZE_PROMPT[self.lang])
+        )
 
         messages_for_api = [
             {"role": m.role, "content": m.content} for m in self.session.messages

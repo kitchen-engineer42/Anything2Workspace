@@ -6,6 +6,7 @@ from typing import Any
 
 import structlog
 
+from chunks2skus.config import settings
 from chunks2skus.schemas.sku import (
     Glossary,
     GlossaryEntry,
@@ -23,7 +24,8 @@ from .base import BaseExtractor
 logger = structlog.get_logger(__name__)
 
 
-RELATIONAL_PROMPT = '''You are building a domain knowledge base by extracting relational knowledge.
+RELATIONAL_PROMPT = {
+    "en": '''You are building a domain knowledge base by extracting relational knowledge.
 
 Relational knowledge includes:
 - Relationships between concepts (A causes B, X is part of Y)
@@ -93,7 +95,80 @@ Guidelines:
 - Use consistent naming for labels (Title Case)
 - For aliases: include abbreviations (e.g., "G-SIB" for "Global Systemically Important Banks")
 - For relationships: only extract clearly stated relationships, not speculative ones
-'''
+''',
+
+    "zh": '''你正在通过提取关系型知识来构建领域知识库。
+
+关系型知识包括：
+- 概念之间的关系（A导致B，X是Y的一部分）
+- 层级分类（主题、子主题）
+- 因果与上下文知识（为什么、因为、但是、如果-那么）
+- 领域术语及定义
+- 同一概念的别名和替代称谓
+
+现有标签树：
+{label_tree}
+
+现有术语表（摘录，共{glossary_count}条）：
+{glossary}
+
+新文档片段内容：
+{content}
+
+任务：
+用本片段中的关系型知识更新知识库。
+
+1. 向标签树层级中添加新标签（保留所有现有标签）
+2. 添加新术语条目或用更丰富的定义更新现有条目
+3. 将术语关联到相关标签
+4. 提取概念之间的类型化关系
+5. 提取别名（缩写、首字母缩略词、替代名称）
+
+仅输出合法JSON：
+{{
+  "label_tree": {{
+    "roots": [
+      {{
+        "name": "分类名称",
+        "children": [
+          {{"name": "子分类", "children": []}}
+        ]
+      }}
+    ]
+  }},
+  "glossary": {{
+    "entries": [
+      {{
+        "term": "术语名称",
+        "definition": "术语的清晰定义",
+        "labels": ["分类", "子分类"],
+        "source_chunks": ["{chunk_id}"],
+        "aliases": ["缩写", "替代名称"],
+        "related_terms": ["相关术语1", "相关术语2"]
+      }}
+    ]
+  }},
+  "relationships": [
+    {{
+      "subject": "概念A",
+      "predicate": "causes",
+      "object": "概念B",
+      "source_chunks": ["{chunk_id}"]
+    }}
+  ]
+}}
+
+合法谓词： "is-a", "has-a", "part-of", "causes", "caused-by", "requires", "enables", "contradicts", "related-to", "depends-on", "regulates", "implements", "example-of"
+
+注意事项：
+- 保留所有现有标签和术语条目
+- 只增加新条目，不删除已有条目
+- 定义应简洁但完整
+- 标签命名保持一致
+- 别名：包括缩写（如"全球系统重要性银行"的缩写"G-SIB"）
+- 关系：仅提取明确陈述的关系，不做推测
+''',
+}
 
 
 class RelationalExtractor(BaseExtractor):
@@ -227,7 +302,7 @@ class RelationalExtractor(BaseExtractor):
             glossary_json = truncated.model_dump_json(indent=2)
 
         # Call LLM for extraction with structured output + retry
-        prompt = RELATIONAL_PROMPT.format(
+        prompt = RELATIONAL_PROMPT[settings.language].format(
             label_tree=current_tree,
             glossary=glossary_json,
             glossary_count=glossary_count,

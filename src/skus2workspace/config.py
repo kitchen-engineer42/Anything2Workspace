@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     chatbot_temperature: float = Field(default=0.4)
     chatbot_max_tokens: int = Field(default=8000)
 
+    # Language
+    language: Literal["en", "zh"] = Field(default="en")
+
     # Logging
     log_level: str = Field(default="INFO")
     log_format: Literal["json", "text", "both"] = Field(default="both")

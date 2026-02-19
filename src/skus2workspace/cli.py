@@ -45,15 +45,19 @@ def run(skus_dir: Path | None, workspace_dir: Path | None, skip_chatbot: bool):
 
     manifest = pipeline.run(skip_chatbot=skip_chatbot)
 
-    click.echo(f"\nWorkspace ready!")
-    click.echo(f"  Location: {pipeline.workspace_dir}")
-    click.echo(f"  Factual SKUs: {manifest.factual_count}")
-    click.echo(f"  Procedural SKUs: {manifest.procedural_count}")
-    click.echo(f"  Relational: {'Yes' if manifest.has_relational else 'No'}")
-    click.echo(f"  spec.md: {'Yes' if manifest.has_spec else 'No'}")
-    click.echo(f"  README.md: {'Yes' if manifest.has_readme else 'No'}")
-    click.echo(f"  Total files: {manifest.total_files_copied}")
-    click.echo(f"  Paths rewritten: {manifest.paths_rewritten}")
+    zh = settings.language == "zh"
+    click.echo(f"\n{'工作空间就绪！' if zh else 'Workspace ready!'}")
+    click.echo(f"  {'位置' if zh else 'Location'}: {pipeline.workspace_dir}")
+    click.echo(f"  {'事实型SKU' if zh else 'Factual SKUs'}: {manifest.factual_count}")
+    click.echo(f"  {'程序型SKU' if zh else 'Procedural SKUs'}: {manifest.procedural_count}")
+    rel_val = ('是' if zh else 'Yes') if manifest.has_relational else ('否' if zh else 'No')
+    click.echo(f"  {'关系型' if zh else 'Relational'}: {rel_val}")
+    spec_val = ('是' if zh else 'Yes') if manifest.has_spec else ('否' if zh else 'No')
+    click.echo(f"  spec.md: {spec_val}")
+    readme_val = ('是' if zh else 'Yes') if manifest.has_readme else ('否' if zh else 'No')
+    click.echo(f"  README.md: {readme_val}")
+    click.echo(f"  {'文件总数' if zh else 'Total files'}: {manifest.total_files_copied}")
+    click.echo(f"  {'路径重写数' if zh else 'Paths rewritten'}: {manifest.paths_rewritten}")
 
 
 @main.command()
@@ -78,12 +82,13 @@ def assemble(skus_dir: Path | None, workspace_dir: Path | None):
 
     manifest = pipeline.assemble_only()
 
-    click.echo(f"\nAssembly complete!")
-    click.echo(f"  Location: {pipeline.workspace_dir}")
-    click.echo(f"  Factual SKUs: {manifest.factual_count}")
-    click.echo(f"  Procedural SKUs: {manifest.procedural_count}")
-    click.echo(f"  Total files: {manifest.total_files_copied}")
-    click.echo(f"  Paths rewritten: {manifest.paths_rewritten}")
+    zh = settings.language == "zh"
+    click.echo(f"\n{'组装完成！' if zh else 'Assembly complete!'}")
+    click.echo(f"  {'位置' if zh else 'Location'}: {pipeline.workspace_dir}")
+    click.echo(f"  {'事实型SKU' if zh else 'Factual SKUs'}: {manifest.factual_count}")
+    click.echo(f"  {'程序型SKU' if zh else 'Procedural SKUs'}: {manifest.procedural_count}")
+    click.echo(f"  {'文件总数' if zh else 'Total files'}: {manifest.total_files_copied}")
+    click.echo(f"  {'路径重写数' if zh else 'Paths rewritten'}: {manifest.paths_rewritten}")
 
 
 @main.command()

@@ -44,11 +44,12 @@ def run(input_dir: Path | None, output_dir: Path | None):
 
     index = pipeline.run()
 
-    click.echo(f"\nChunking complete!")
-    click.echo(f"  Total chunks: {index.total_chunks}")
-    click.echo(f"  Total tokens: {index.total_tokens:,}")
-    click.echo(f"  Source files: {len(index.source_files)}")
-    click.echo(f"  Output: {pipeline.output_dir}")
+    zh = settings.language == "zh"
+    click.echo(f"\n{'分块完成！' if zh else 'Chunking complete!'}")
+    click.echo(f"  {'总块数' if zh else 'Total chunks'}: {index.total_chunks}")
+    click.echo(f"  {'总token数' if zh else 'Total tokens'}: {index.total_tokens:,}")
+    click.echo(f"  {'源文件数' if zh else 'Source files'}: {len(index.source_files)}")
+    click.echo(f"  {'输出目录' if zh else 'Output'}: {pipeline.output_dir}")
 
 
 @main.command("chunk-file")

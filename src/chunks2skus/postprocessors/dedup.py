@@ -20,9 +20,13 @@ from chunks2skus.utils.llm_client import call_llm_json
 logger = structlog.get_logger(__name__)
 
 
-TIER1_SYSTEM_PROMPT = "You are a knowledge base quality assistant. Output ONLY valid JSON."
+TIER1_SYSTEM_PROMPT = {
+    "en": "You are a knowledge base quality assistant. Output ONLY valid JSON.",
+    "zh": "你是知识库质量助手。仅输出合法JSON。",
+}
 
-TIER1_SCAN_PROMPT = """Compare these SKU headers within the same topic bucket. Flag any pairs that look like potential duplicates or contradictions.
+TIER1_SCAN_PROMPT = {
+    "en": """Compare these SKU headers within the same topic bucket. Flag any pairs that look like potential duplicates or contradictions.
 
 IMPORTANT:
 - Only flag pairs that are CLEARLY similar or contradictory based on name and description
@@ -35,12 +39,32 @@ SKU Headers:
 Return JSON:
 {{"flagged_pairs": [{{"sku_a": "sku_id_1", "sku_b": "sku_id_2", "reason": "brief reason"}}]}}
 
-If no duplicates or contradictions found, return: {{"flagged_pairs": []}}"""
+If no duplicates or contradictions found, return: {{"flagged_pairs": []}}""",
+
+    "zh": """比较同一主题桶内的这些SKU头信息。标记任何看起来可能是重复或矛盾的配对。
+
+重要提示：
+- 仅标记基于名称和描述明显相似或矛盾的配对
+- 可以适度多标——第二轮会验证
+- 不要标记仅仅相关但各自独立的配对
+
+SKU头信息：
+{headers}
+
+返回JSON：
+{{"flagged_pairs": [{{"sku_a": "sku_id_1", "sku_b": "sku_id_2", "reason": "简要原因"}}]}}
+
+如未发现重复或矛盾，返回：{{"flagged_pairs": []}}""",
+}
 
 
-TIER2_SYSTEM_PROMPT = "You are a knowledge base quality assistant. Output ONLY valid JSON."
+TIER2_SYSTEM_PROMPT = {
+    "en": "You are a knowledge base quality assistant. Output ONLY valid JSON.",
+    "zh": "你是知识库质量助手。仅输出合法JSON。",
+}
 
-TIER2_JUDGMENT_PROMPT = """Read these two SKUs carefully. Determine if they are truly duplicates or contradictory.
+TIER2_JUDGMENT_PROMPT = {
+    "en": """Read these two SKUs carefully. Determine if they are truly duplicates or contradictory.
 
 SKU A ({sku_a_id}):
 Name: {sku_a_name}
@@ -75,7 +99,45 @@ Return JSON:
     "rewrite_sku": "sku_id or null",
     "new_content": "rewritten content or null",
     "merged_content": "merged content or null"
-}}"""
+}}""",
+
+    "zh": """仔细阅读这两个SKU。判断它们是否真的重复或矛盾。
+
+SKU A ({sku_a_id})：
+名称：{sku_a_name}
+描述：{sku_a_desc}
+内容：
+{sku_a_content}
+
+---
+
+SKU B ({sku_b_id})：
+名称：{sku_b_name}
+描述：{sku_b_desc}
+内容：
+{sku_b_content}
+
+---
+
+重要提示：有疑问时，保留两者。仅在几乎完全相同时才建议删除。
+
+操作选项：
+- "keep"：两者足够不同，都保留
+- "delete"：其中一个是明显的重复（在 "delete_sku" 中指定删除哪个）
+- "rewrite"：其中一个需要修改以消除重叠（在 "rewrite_sku" 中指定，并提供 "new_content"）
+- "merge"：合并为一个（提供 "merged_content"，在 "delete_sku" 中指定移除哪个）
+- "contradiction"：两者都应保留，但它们对同一主题陈述了矛盾的内容
+
+返回JSON：
+{{
+    "action": "keep" | "delete" | "rewrite" | "merge" | "contradiction",
+    "reasoning": "简要说明",
+    "delete_sku": "sku_id 或 null",
+    "rewrite_sku": "sku_id 或 null",
+    "new_content": "重写后的内容或 null",
+    "merged_content": "合并后的内容或 null"
+}}""",
+}
 
 
 class DedupPostprocessor(BasePostprocessor):
@@ -212,10 +274,11 @@ class DedupPostprocessor(BasePostprocessor):
             for e in entries
         )
 
-        prompt = TIER1_SCAN_PROMPT.format(headers=headers_text)
+        lang = settings.language
+        prompt = TIER1_SCAN_PROMPT[lang].format(headers=headers_text)
         parsed = call_llm_json(
             prompt=prompt,
-            system_prompt=TIER1_SYSTEM_PROMPT,
+            system_prompt=TIER1_SYSTEM_PROMPT[lang],
             model=settings.dedup_scan_model,
             temperature=0.2,
             max_tokens=4000,
@@ -249,7 +312,8 @@ class DedupPostprocessor(BasePostprocessor):
             logger.warning("Could not load content for pair", a=pair.sku_a, b=pair.sku_b)
             return None
 
-        prompt = TIER2_JUDGMENT_PROMPT.format(
+        lang = settings.language
+        prompt = TIER2_JUDGMENT_PROMPT[lang].format(
             sku_a_id=pair.sku_a,
             sku_a_name=meta_a.get("name", pair.sku_a),
             sku_a_desc=meta_a.get("description", ""),
@@ -262,7 +326,7 @@ class DedupPostprocessor(BasePostprocessor):
 
         parsed = call_llm_json(
             prompt=prompt,
-            system_prompt=TIER2_SYSTEM_PROMPT,
+            system_prompt=TIER2_SYSTEM_PROMPT[lang],
             model=settings.extraction_model,
             temperature=0.3,
             max_tokens=4000,

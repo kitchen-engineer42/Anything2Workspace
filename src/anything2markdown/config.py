@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     retry_count: int = Field(default=1)
     retry_delay_seconds: int = Field(default=2)
 
+    # Language
+    language: Literal["en", "zh"] = Field(default="en")
+
     # Logging
     log_level: str = Field(default="INFO")
     log_format: Literal["json", "text", "both"] = Field(default="both")

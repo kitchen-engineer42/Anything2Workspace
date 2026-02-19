@@ -58,10 +58,15 @@ class ChunkingPipeline:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.passthrough_dir.mkdir(parents=True, exist_ok=True)
 
-        # Find all files
-        files = list(self.input_dir.glob("*"))
-        markdown_files = [f for f in files if f.suffix.lower() == ".md"]
-        json_files = [f for f in files if f.suffix.lower() == ".json"]
+        # Find all files recursively, excluding output subdirectories
+        exclude_dirs = {"chunks", "passthrough", "skus"}
+        all_files = [
+            f for f in self.input_dir.rglob("*")
+            if f.is_file()
+            and not any(d in f.relative_to(self.input_dir).parts for d in exclude_dirs)
+        ]
+        markdown_files = [f for f in all_files if f.suffix.lower() == ".md"]
+        json_files = [f for f in all_files if f.suffix.lower() == ".json"]
 
         logger.info(
             "Found files",
@@ -203,8 +208,12 @@ class ChunkingPipeline:
             chunk: Chunk to write
             source_path: Original source file path
         """
-        # Generate chunk filename
-        stem = source_path.stem
+        # Generate collision-safe chunk filename from relative path
+        try:
+            rel = source_path.relative_to(self.input_dir)
+            stem = str(rel.with_suffix("")).replace("/", "_").replace("\\", "_")
+        except ValueError:
+            stem = source_path.stem
         chunk_id = f"{stem}_chunk_{chunk.metadata.chunk_index + 1:03d}"
         chunk_filename = f"{chunk_id}.md"
         chunk_path = self.output_dir / chunk_filename
@@ -233,7 +242,13 @@ class ChunkingPipeline:
         Args:
             file_path: Path to JSON file
         """
-        dest_path = self.passthrough_dir / file_path.name
+        # Use collision-safe name from relative path
+        try:
+            rel = file_path.relative_to(self.input_dir)
+            safe_name = str(rel).replace("/", "_").replace("\\", "_")
+        except ValueError:
+            safe_name = file_path.name
+        dest_path = self.passthrough_dir / safe_name
         shutil.copy2(file_path, dest_path)
         logger.debug("Passed through JSON", file=file_path.name)
 

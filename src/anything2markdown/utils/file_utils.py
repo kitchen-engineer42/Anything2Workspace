@@ -94,20 +94,29 @@ def get_file_size_mb(file_path: Path) -> float:
 
 def flatten_path(file_path: Path, root_dir: Path) -> str:
     """
-    Convert nested path to flat filename.
-    e.g., folder1/folder2/file.pdf -> folder1_folder2_file
+    Convert nested path to a grouped or flat output name.
+
+    - Direct children of root_dir stay flat: ``file.pdf`` → ``file``
+    - Files inside a subdirectory are grouped under the first sub-dir:
+      ``sub/a/b/file.pdf`` → ``sub/a_b_file``
 
     Args:
         file_path: Full path to the file
         root_dir: Root directory to make path relative to
 
     Returns:
-        Flattened filename without extension
+        Output name without extension (may contain one ``/`` for grouped files)
     """
     try:
         relative = file_path.relative_to(root_dir)
-        flat_name = str(relative).replace("/", "_").replace("\\", "_")
-        # Remove extension
-        return Path(flat_name).stem
+        parts = relative.parts
+        if len(parts) <= 1:
+            # Direct child → flat
+            return relative.stem
+        else:
+            # Grouped: first subdirectory becomes folder, rest flattened
+            group = parts[0]
+            rest = "_".join(parts[1:])
+            return str(Path(group) / Path(rest).stem)
     except ValueError:
         return file_path.stem

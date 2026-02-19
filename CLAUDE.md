@@ -96,6 +96,16 @@ anything2md parse-file X  # Parse single file
 anything2md parse-url X   # Parse single URL
 ```
 
+## Language Configuration
+
+Set `LANGUAGE` in `.env` to control the output language of all LLM prompts:
+- `LANGUAGE=en` (default) — English prompts, English output
+- `LANGUAGE=zh` — Chinese prompts, Chinese output (titles, descriptions, definitions, README, mapping, eureka)
+
+All prompt constants are `dict[str, str]` keyed by language code. At each call site, the prompt is selected via `PROMPT[settings.language]`. JSON keys, field names, enum values, and format specifications remain English in both languages.
+
+**IMPORTANT: Dual-language rule** — When modifying any LLM prompt, always update BOTH the `"en"` and `"zh"` versions. Every prompt change must be applied to both languages to keep them in sync.
+
 ## Configuration
 
 All settings in `.env`:
