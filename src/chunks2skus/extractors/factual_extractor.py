@@ -31,6 +31,11 @@ TASK:
 Extract distinct factual knowledge units. Each unit should be self-contained.
 For structured/tabular data, use JSON format. For narrative facts, use markdown.
 
+STRUCTURED DATA RULES (IMPORTANT):
+- If the chunk contains structured data (markdown tables, HTML tables, JSON arrays, CSV-like lists, repeated key-value entries, item catalogs, stat blocks), keep the ENTIRE dataset as ONE factual unit with content_type "json". Convert the full dataset into a JSON array of objects. Do NOT split individual rows, entries, or items into separate SKUs.
+- Only split into multiple SKUs when the chunk contains genuinely DIFFERENT topics (e.g., a weapon stats table AND an unrelated game mechanic explanation). Rows within the same table or entries in the same list are NEVER separate units.
+- When in doubt, prefer fewer, larger units over many small ones. A single table = one unit. A single list of items = one unit.
+
 Follow the MECE principle (Mutually Exclusive, Collectively Exhaustive):
 - Facts should not overlap
 - Cover all factual content in the chunk
@@ -64,6 +69,11 @@ If no factual knowledge is found, return: {{"facts": []}}
 任务：
 提取独立的事实性知识单元。每个单元应当自包含。
 对于结构化/表格数据，使用JSON格式。对于叙述性事实，使用markdown格式。
+
+结构化数据规则（重要）：
+- 如果片段中包含结构化数据（markdown表格、HTML表格、JSON数组、CSV风格列表、重复的键值条目、物品目录、属性数据块），必须将整个数据集作为一个事实单元保留，content_type设为"json"，将完整数据集转换为JSON对象数组。绝对不要将单独的行、条目或项目拆分为独立的SKU。
+- 仅当片段包含真正不同的主题时才拆分为多个SKU（例如一个武器属性表和一段无关的游戏机制说明）。同一表格中的行或同一列表中的条目永远不应被拆分。
+- 当无法确定时，优先选择更少、更大的单元，而非许多小单元。一张表格=一个单元。一个物品列表=一个单元。
 
 遵循MECE原则（相互独立，完全穷尽）：
 - 各事实之间不应重叠

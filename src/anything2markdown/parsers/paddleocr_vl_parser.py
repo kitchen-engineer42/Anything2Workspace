@@ -45,10 +45,12 @@ class PaddleOCRVLParser(BaseParser):
         base_url = settings.ocr_base_url or settings.siliconflow_base_url
         api_key = settings.siliconflow_api_key or "local"
         if base_url:
-            # For local servers, bypass system proxy to avoid connection issues
+            # For local servers, bypass system proxy to avoid connection issues.
+            # trust_env=False is required because proxy=None still picks up
+            # macOS system proxies via httpx environment detection.
             http_client = None
             if "localhost" in base_url or "127.0.0.1" in base_url:
-                http_client = httpx.Client(proxy=None)
+                http_client = httpx.Client(trust_env=False)
             else:
                 # Explicit timeout with separate read timeout to prevent hung connections
                 timeout = httpx.Timeout(
