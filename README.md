@@ -83,6 +83,7 @@ Converts diverse file types and URLs into Markdown or JSON.
 | PPTX, DOCX, media | MarkItDown |
 | XLSX, CSV | TabularParser (JSON output) |
 | YouTube URL | YouTubeParser (transcript extraction) |
+| Bilibili URL | BilibiliParser (CC subtitles or faster-whisper transcription) |
 | GitHub repo | RepomixParser (full repo → single Markdown) |
 | Other URLs | FireCrawlParser (web crawling) |
 
@@ -204,6 +205,7 @@ logs/           # Dual-format logs (JSON + plain text)
 
 - Python 3.10+
 - Node.js 20+ (for `repomix`)
+- ffmpeg (for Bilibili audio extraction)
 - SiliconFlow API key (for LLM features)
 
 ## License

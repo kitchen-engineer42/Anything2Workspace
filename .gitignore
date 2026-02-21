@@ -46,6 +46,7 @@ logs/
 module_design/
 dev_log/
 gaps_analysis.md
+*_cookies.txt
 
 # Test
 .pytest_cache/

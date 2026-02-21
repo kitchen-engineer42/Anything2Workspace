@@ -130,10 +130,15 @@ def postprocess():
     type=click.Path(exists=True, path_type=Path),
     help="Chunks directory for source lookup (default: output/chunks/)",
 )
-def postprocess_all(skus_dir: Path | None, chunks_dir: Path | None):
+@click.option(
+    "--skip-confidence",
+    is_flag=True,
+    help="Skip the proofreading/confidence step (requires Jina search)",
+)
+def postprocess_all(skus_dir: Path | None, chunks_dir: Path | None, skip_confidence: bool):
     """Run all 3 postprocessing steps sequentially."""
     pipeline = PostprocessingPipeline(skus_dir=skus_dir, chunks_dir=chunks_dir)
-    results = pipeline.run_all()
+    results = pipeline.run_all(skip_confidence=skip_confidence)
 
     bucketing = results["bucketing"]
     dedup = results["dedup"]
@@ -152,11 +157,14 @@ def postprocess_all(skus_dir: Path | None, chunks_dir: Path | None):
         f"{dedup.total_deleted} {'已删除' if zh else 'deleted'}, "
         f"{dedup.total_kept} {'已保留' if zh else 'kept'}"
     )
-    click.echo(
-        f"  {'校对' if zh else 'Proofreading'}: "
-        f"{proof.total_scored} {'已评分' if zh else 'scored'}, "
-        f"{'平均置信度' if zh else 'avg confidence'} {proof.average_confidence:.3f}"
-    )
+    if proof is not None:
+        click.echo(
+            f"  {'校对' if zh else 'Proofreading'}: "
+            f"{proof.total_scored} {'已评分' if zh else 'scored'}, "
+            f"{'平均置信度' if zh else 'avg confidence'} {proof.average_confidence:.3f}"
+        )
+    else:
+        click.echo(f"  {'校对' if zh else 'Proofreading'}: {'已跳过' if zh else 'skipped'}")
 
 
 @postprocess.command("bucket")

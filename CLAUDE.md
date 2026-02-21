@@ -33,7 +33,7 @@ Anything2Workspace/
 ├── src/
 │   ├── anything2markdown/     # Module 1: Universal parser
 │   │   ├── parsers/           # File parsers (MarkItDown, MinerU, PaddleOCR-VL, Tabular)
-│   │   ├── url_parsers/       # URL parsers (YouTube, FireCrawl, Repomix)
+│   │   ├── url_parsers/       # URL parsers (YouTube, Bilibili, FireCrawl, Repomix)
 │   │   ├── utils/             # Logging, file utils, retry logic
 │   │   ├── schemas/           # ParseResult schema
 │   │   ├── router.py          # Routing logic
@@ -84,6 +84,7 @@ Convert various file types and URLs into Markdown or JSON for downstream process
 | PPT, DOC, media | MarkItDown |
 | xlsx, csv | TabularParser (→ JSON) |
 | YouTube URL | YouTubeParser |
+| Bilibili URL | BilibiliParser (subtitles or faster-whisper) |
 | GitHub repo | RepomixParser |
 | Other URLs | FireCrawlParser |
 
@@ -117,6 +118,9 @@ All settings in `.env`:
 - `OCR_DPI=150` - Page render resolution
 - `OCR_PAGE_TIMEOUT=60` - Per-page API timeout
 - `OCR_BASE_URL=` - Empty = SiliconFlow API; `http://localhost:8080` = local mlx-vlm
+- `BILIBILI_COOKIES_FILE=` - Path to Netscape cookie file for Bilibili
+- `BILIBILI_COOKIES_FROM_BROWSER=chrome` - Browser to extract cookies from (or empty)
+- `WHISPERX_MODEL=small` - Whisper model for Bilibili transcription fallback
 - `LOG_FORMAT=both` - Logging format
 
 ## Module 2: Markdown2Chunks

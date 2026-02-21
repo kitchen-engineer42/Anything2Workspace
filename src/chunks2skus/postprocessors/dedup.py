@@ -346,8 +346,8 @@ class DedupPostprocessor(BasePostprocessor):
             detail=parsed.get("reasoning", ""),
             deleted_skus=[parsed["delete_sku"]] if parsed.get("delete_sku") else [],
             rewritten_skus=[parsed["rewrite_sku"]] if parsed.get("rewrite_sku") else [],
-            new_content=parsed.get("new_content"),
-            merged_content=parsed.get("merged_content"),
+            new_content=json.dumps(parsed["new_content"], ensure_ascii=False) if isinstance(parsed.get("new_content"), (list, dict)) else parsed.get("new_content"),
+            merged_content=json.dumps(parsed["merged_content"], ensure_ascii=False) if isinstance(parsed.get("merged_content"), (list, dict)) else parsed.get("merged_content"),
         )
 
     def _apply_action(self, action: DedupAction, index) -> None:

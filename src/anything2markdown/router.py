@@ -8,7 +8,7 @@ import structlog
 from .config import settings
 from .parsers import MarkItDownParser, MinerUParser, PaddleOCRVLParser, TabularParser
 from .parsers.base import BaseParser
-from .url_parsers import FireCrawlParser, RepomixParser, YouTubeParser
+from .url_parsers import BilibiliParser, FireCrawlParser, RepomixParser, YouTubeParser
 from .url_parsers.base import BaseURLParser
 from .utils.file_utils import get_file_size_mb
 
@@ -54,6 +54,12 @@ class Router:
         r"youtube\.com/embed/",
     ]
 
+    BILIBILI_PATTERNS = [
+        r"bilibili\.com/video/",
+        r"b23\.tv/",
+        r"bilibili\.com/bangumi/",
+    ]
+
     GITHUB_REPO_PATTERNS = [
         r"github\.com/[\w-]+/[\w-]+/?$",
         r"github\.com/[\w-]+/[\w-]+\.git$",
@@ -73,6 +79,7 @@ class Router:
         self.url_parsers: dict[str, BaseURLParser] = {
             "firecrawl": FireCrawlParser(),
             "youtube": YouTubeParser(),
+            "bilibili": BilibiliParser(),
             "repomix": RepomixParser(),
         }
 
@@ -138,6 +145,12 @@ class Router:
             if re.search(pattern, url_lower):
                 logger.info("Routing URL to YouTube parser", url=url)
                 return self.url_parsers["youtube"]
+
+        # Check Bilibili patterns
+        for pattern in self.BILIBILI_PATTERNS:
+            if re.search(pattern, url_lower):
+                logger.info("Routing URL to Bilibili parser", url=url)
+                return self.url_parsers["bilibili"]
 
         # Check GitHub repo patterns
         for pattern in self.GITHUB_REPO_PATTERNS:

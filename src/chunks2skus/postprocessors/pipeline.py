@@ -28,8 +28,12 @@ class PostprocessingPipeline:
         self.skus_dir = skus_dir or settings.skus_output_dir
         self.chunks_dir = chunks_dir or settings.chunks_dir
 
-    def run_all(self) -> dict[str, Any]:
-        """Run all 3 postprocessing steps sequentially."""
+    def run_all(self, skip_confidence: bool = False) -> dict[str, Any]:
+        """Run all 3 postprocessing steps sequentially.
+
+        Args:
+            skip_confidence: If True, skip the proofreading/confidence step (requires Jina search).
+        """
         start_time = datetime.now()
         logger.info("Starting postprocessing pipeline", skus_dir=str(self.skus_dir))
 
@@ -45,19 +49,24 @@ class PostprocessingPipeline:
         dedup = DedupPostprocessor(skus_dir=self.skus_dir)
         results["dedup"] = dedup.run()
 
-        # Step 3: Proofreading
-        logger.info("Step 3/3: Proofreading")
-        proofreading = ProofreadingPostprocessor(skus_dir=self.skus_dir, chunks_dir=self.chunks_dir)
-        results["proofreading"] = proofreading.run()
+        # Step 3: Proofreading (optional)
+        if not skip_confidence:
+            logger.info("Step 3/3: Proofreading")
+            proofreading = ProofreadingPostprocessor(skus_dir=self.skus_dir, chunks_dir=self.chunks_dir)
+            results["proofreading"] = proofreading.run()
+        else:
+            logger.info("Step 3/3: Proofreading — skipped (--skip-confidence)")
+            results["proofreading"] = None
 
         duration = (datetime.now() - start_time).total_seconds()
-        logger.info(
-            "Postprocessing pipeline complete",
-            duration_seconds=f"{duration:.1f}",
-            buckets=results["bucketing"].total_buckets,
-            dedup_deleted=results["dedup"].total_deleted,
-            confidence_avg=f"{results['proofreading'].average_confidence:.3f}",
-        )
+        log_kwargs: dict[str, Any] = {
+            "duration_seconds": f"{duration:.1f}",
+            "buckets": results["bucketing"].total_buckets,
+            "dedup_deleted": results["dedup"].total_deleted,
+        }
+        if results["proofreading"] is not None:
+            log_kwargs["confidence_avg"] = f"{results['proofreading'].average_confidence:.3f}"
+        logger.info("Postprocessing pipeline complete", **log_kwargs)
 
         return results
 

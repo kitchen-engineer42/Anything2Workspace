@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     ocr_page_timeout: int = Field(default=60)
     ocr_base_url: str = Field(default="")  # Empty = use siliconflow_base_url; set to e.g. http://localhost:8080/v1 for local
 
+    # Bilibili Configuration
+    bilibili_cookies_file: str = Field(default="")  # Path to Netscape cookie file
+    bilibili_cookies_from_browser: str = Field(default="chrome")  # Browser to extract cookies from (chrome/firefox/safari/edge); empty to disable
+    whisperx_model: str = Field(default="large-v2")  # WhisperX model size
+
     # Processing
     retry_count: int = Field(default=1)
     retry_delay_seconds: int = Field(default=2)
